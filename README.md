@@ -1,11 +1,12 @@
 # MergeHell
 
-MergeHell is a programming language whose source code looks like an unresolved
-Git merge conflict, a broken patch, a failed rebase transcript, or some other
-repository incident that should probably not have been committed.
+MergeHell is a programming language whose source code looks like...
+- an unresolved Git merge conflict
+- a broken patch
+- a failed rebase transcript
+- or some other repository incident that should probably not have been committed.
 
-Where most tools see conflict markers and ask how to resolve them, MergeHell
-asks which side to execute.
+Where most tools see conflict markers and ask how to resolve them, MergeHell asks which side to execute.
 
 ```txt
 <<<<<<< print
@@ -39,25 +40,6 @@ Output:
 Goodbye, world!
 ```
 
-## Status
-
-This repository currently contains the language specification and is the home
-for the planned Rust implementation of the `mergehell` interpreter.
-
-The canonical language design lives in [SPEC.md](SPEC.md).
-
-The first implementation target is baseline execution:
-
-- conflict hunk parsing
-- nested conflicts
-- `ours`, `theirs`, `base`, and `union` strategies
-- diff-style metadata
-- `print`, `let`, `if`, `repeat`, `function`, and `call`
-- diagnostics that are themselves valid MergeHell source
-
-Git-aware execution, merge drivers, patch execution, blame-based resolution,
-and other advanced regrets are intended follow-up work.
-
 ## What Is A MergeHell Program?
 
 A MergeHell program is made from Git conflict markers:
@@ -82,8 +64,7 @@ goodbye
 >>>>>>> feature/greeting
 ```
 
-The opening marker contains the command. The closing marker contains metadata.
-The interpreter evaluates one or more lanes according to a resolution strategy.
+The opening marker contains the command, while the closing marker contains metadata; the interpreter evaluates one or more lanes according to a resolution strategy.
 
 ## Resolution Strategies
 
@@ -147,12 +128,11 @@ Under `--ours`, this binds `name` to `James` and prints:
 Hello, James
 ```
 
-Under `--base`, the base lane may provide a type, default value,
-documentation, or prior state.
+Under `--base`, the base lane may provide a type, default value, documentation, or prior state.
 
 ## Nested Conflicts
 
-Real Git conflicts inside MergeHell source are valid syntax.
+Real Git conflicts inside MergeHell source are valid syntax!
 
 ```txt
 <<<<<<< HEAD
@@ -171,8 +151,7 @@ Adios
 ```
 
 This is a conflict between two programs, each of which is also a conflict.
-MergeHell parses it as nested conflict nodes instead of rejecting it as an
-unresolved file.
+MergeHell parses it as nested conflict nodes instead of rejecting it as an unresolved file.
 
 ## Diff-Wrapped Source
 
@@ -192,13 +171,11 @@ Goodbye
 >>>>>>> feature/greeting
 ```
 
-Diff metadata is accepted as program metadata. In more advanced modes, it may
-provide module names, source ranges, random seeds, or input/output channels.
+Diff metadata is accepted as program metadata. In more advanced modes, it may provide module names, source ranges, random seeds, or input/output channels.
 
 ## Diagnostics
 
-Errors in MergeHell are called conflicts, and diagnostics should be valid
-MergeHell source:
+Errors in MergeHell are called conflicts, and diagnostics should be valid MergeHell source:
 
 ```txt
 CONFLICT (syntax): Merge conflict in parser
@@ -213,7 +190,7 @@ This means a failed build can produce another MergeHell program.
 
 ## Git Integration
 
-MergeHell is designed to work badly inside Git on purpose.
+MergeHell is intentionally designed to work very badly inside Git on purpose.
 
 Recommended `.gitattributes`:
 
@@ -230,19 +207,14 @@ Recommended merge driver shape:
     driver = mergehell merge %O %A %B %L %P
 ```
 
-The merge driver should preserve and canonicalize conflicts rather than resolve
-them.
+The merge driver should preserve and canonicalize conflicts rather than resolve them.
 
 ## Non-Goals
 
-MergeHell does not aim to be readable, safe, easy to lint, compatible with
-normal development workflows, or accepted by code review.
+MergeHell does not aim to be readable, safe, easy to lint, compatible with normal development workflows, or accepted by code review.
 
-It does aim to be technically coherent, Git-shaped, executable while appearing
-broken, and able to turn real merge conflicts into language constructs.
+It does aim to be technically coherent, Git-shaped, executable, and able to turn real merge conflicts into language constructs.
 
 ## Specification
 
-Read [SPEC.md](SPEC.md) for the full language specification, including the
-grammar, evaluation model, compliance levels, Git integration notes, and
-examples.
+Read [SPEC.md](SPEC.md) for the full language specification, including the grammar, evaluation model, compliance levels, Git integration notes, and examples.
