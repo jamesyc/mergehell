@@ -2,8 +2,7 @@
 
 ## Current Step
 
-- In progress: implement Phase 4 control flow, errors, imports, explicit
-  resolve, and basic type diagnostics.
+- In progress: implement Phase 5 CLI completeness and developer tooling.
 
 ## Completed Steps
 
@@ -52,7 +51,15 @@
   14 CLI integration tests, binary tests, and doc tests all passed.
 - Staged the verified Phase 4 runtime, fixture, and status changes.
 - Committed the verified Phase 4 runtime slice.
+- Added Phase 5 developer tooling: `ast --json`, canonical `merge`, `regret`
+  summaries, strict diagnostic handling, conflict-count/JSON AST helpers, and
+  unit/integration coverage for those CLI paths.
+- Ran `cargo fmt --all` successfully for the Phase 5 slice.
+- Ran `cargo test --all` successfully for the Phase 5 slice: 129 unit tests,
+  18 CLI integration tests, binary tests, and doc tests all passed.
+- Staged the verified Phase 5 CLI/tooling and status changes.
+- Committed the verified Phase 5 CLI/tooling slice.
 
 ## Next Steps
 
-- Continue with Phase 5 CLI completeness and developer tooling.
+- Continue with Phase 6 Git integration.

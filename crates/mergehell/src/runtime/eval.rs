@@ -25,6 +25,7 @@ pub struct RunOptions {
     pub strategy: Strategy,
     pub seed: u64,
     pub parse_options: ParseOptions,
+    pub strict: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -40,6 +41,7 @@ impl Default for RunOptions {
             strategy: Strategy::Ours,
             seed: 0,
             parse_options: ParseOptions::default(),
+            strict: false,
         }
     }
 }
@@ -68,11 +70,20 @@ pub fn run_source_with_options(
     let source = SourceFile::new(name.clone(), text);
     let program = parse_source(&source, options.parse_options);
 
-    if program.has_errors() {
+    if program.has_errors()
+        || (options.strict
+            && program
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.severity == Severity::Warning))
+    {
         let errors = program
             .diagnostics
             .iter()
-            .filter(|diagnostic| diagnostic.severity == Severity::Error)
+            .filter(|diagnostic| {
+                diagnostic.severity == Severity::Error
+                    || (options.strict && diagnostic.severity == Severity::Warning)
+            })
             .cloned()
             .collect::<Vec<_>>();
         return RunOutput {
@@ -617,6 +628,7 @@ mod tests {
                 strategy,
                 seed,
                 parse_options: ParseOptions::default(),
+                strict: false,
             },
         )
     }

@@ -83,8 +83,58 @@ pub fn ast_with_options(
     format!("{:#?}", parse_with_options(name, text, options))
 }
 
+pub fn ast_json_with_options(
+    name: impl Into<String>,
+    text: impl Into<String>,
+    options: ParseOptions,
+) -> String {
+    syntax::ast::program_to_json(&parse_with_options(name, text, options))
+}
+
 pub fn format_source(_name: impl Into<String>, text: impl Into<String>) -> String {
     format::format_source(&text.into())
+}
+
+pub fn merge_sources(
+    base_label: &str,
+    base: &str,
+    ours_label: &str,
+    ours: &str,
+    theirs_label: &str,
+    theirs: &str,
+) -> String {
+    let mut output = String::new();
+    output.push_str("<<<<<<< ");
+    output.push_str(ours_label);
+    output.push('\n');
+    append_source_block(&mut output, ours);
+    output.push_str("||||||| ");
+    output.push_str(base_label);
+    output.push('\n');
+    append_source_block(&mut output, base);
+    output.push_str("=======\n");
+    append_source_block(&mut output, theirs);
+    output.push_str(">>>>>>> ");
+    output.push_str(theirs_label);
+    output.push('\n');
+    output
+}
+
+pub fn regret_summary(name: impl Into<String>, text: impl Into<String>) -> String {
+    let name = name.into();
+    let program = parse(name.clone(), text);
+    format!(
+        "regret: {name}\nconflicts: {}\ndiagnostics: {}\n",
+        program.conflict_count(),
+        program.diagnostics.len()
+    )
+}
+
+fn append_source_block(output: &mut String, text: &str) {
+    output.push_str(text);
+    if !text.ends_with('\n') {
+        output.push('\n');
+    }
 }
 
 #[cfg(test)]
@@ -133,5 +183,37 @@ mod tests {
         );
 
         assert!(program.has_conflicts());
+    }
+
+    #[test]
+    fn ast_json_api_returns_json_shape() {
+        let json = ast_json_with_options(
+            "test.mh",
+            "<<<<<<< print\nhello\n=======\nbye\n>>>>>>> print\n",
+            ParseOptions::default(),
+        );
+
+        assert!(json.contains("\"type\":\"Program\""));
+        assert!(json.contains("\"type\":\"Conflict\""));
+    }
+
+    #[test]
+    fn merge_sources_emits_canonical_conflict() {
+        let merged = merge_sources("base", "B", "ours", "O\n", "theirs", "T");
+
+        assert_eq!(
+            merged,
+            "<<<<<<< ours\nO\n||||||| base\nB\n=======\nT\n>>>>>>> theirs\n"
+        );
+    }
+
+    #[test]
+    fn regret_summary_reports_conflict_count() {
+        let summary = regret_summary(
+            "test.mh",
+            "<<<<<<< print\nhello\n=======\nbye\n>>>>>>> print\n",
+        );
+
+        assert_eq!(summary, "regret: test.mh\nconflicts: 1\ndiagnostics: 0\n");
     }
 }

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -243,4 +244,78 @@ fn ast_prints_debug_tree() {
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
     assert!(stdout.contains("Program"));
     assert!(stdout.contains("ConflictNode"));
+}
+
+#[test]
+fn ast_json_prints_json_tree() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args(["ast", fixture("hello.mh").to_str().unwrap(), "--json"])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(stdout.contains("\"type\":\"Program\""));
+    assert!(stdout.contains("\"type\":\"Conflict\""));
+}
+
+#[test]
+fn regret_prints_conflict_summary() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args(["regret", fixture("hello.mh").to_str().unwrap()])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(stdout.contains("conflicts: 1"));
+    assert!(stdout.contains("diagnostics: 0"));
+}
+
+#[test]
+fn format_preserves_source_for_initial_formatter() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args(["format", fixture("hello.mh").to_str().unwrap()])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        expected("hello.mh")
+    );
+}
+
+#[test]
+fn merge_outputs_canonical_conflict() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("mergehell_cli_merge_{unique}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let base = dir.join("base.mh");
+    let ours = dir.join("ours.mh");
+    let theirs = dir.join("theirs.mh");
+    std::fs::write(&base, "base\n").unwrap();
+    std::fs::write(&ours, "ours\n").unwrap();
+    std::fs::write(&theirs, "theirs\n").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "merge",
+            base.to_str().unwrap(),
+            ours.to_str().unwrap(),
+            theirs.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(stdout.contains("<<<<<<< "));
+    assert!(stdout.contains("ours\n"));
+    assert!(stdout.contains("||||||| "));
+    assert!(stdout.contains("base\n"));
+    assert!(stdout.contains("theirs\n"));
 }

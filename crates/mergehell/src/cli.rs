@@ -32,10 +32,8 @@ pub fn run_cli(args: &[String], stdin: &mut dyn Read) -> CliOutput {
         "check" => check_command(&args[1..], stdin),
         "ast" => ast_command(&args[1..], stdin),
         "format" => format_command(&args[1..], stdin),
-        "merge" | "regret" => CliOutput::failure(format!(
-            "error: `{}` is declared but not implemented in Level 0\n",
-            args[0]
-        )),
+        "merge" => merge_command(&args[1..], stdin),
+        "regret" => regret_command(&args[1..], stdin),
         command => CliOutput::usage_error(format!("error: unknown command `{command}`\n")),
     }
 }
@@ -78,7 +76,13 @@ fn check_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
         Err(error) => return CliOutput::failure(format!("error: {error}\n")),
     };
 
-    match crate::check_with_options(file, source, options.parse_options) {
+    let check_result = if options.strict {
+        strict_check(file, source, options.parse_options)
+    } else {
+        crate::check_with_options(file, source, options.parse_options)
+    };
+
+    match check_result {
         Ok(()) => CliOutput::success(String::new()),
         Err(diagnostics) => CliOutput {
             stdout: String::new(),
@@ -94,7 +98,8 @@ fn ast_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
     }
 
     let file = &args[0];
-    let options = match parse_cli_options(&args[1..]) {
+    let (json, option_args) = split_ast_args(&args[1..]);
+    let options = match parse_cli_options(&option_args) {
         Ok(options) => options,
         Err(message) => return CliOutput::usage_error(format!("error: {message}\n")),
     };
@@ -102,10 +107,17 @@ fn ast_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
         Ok(source) => source,
         Err(error) => return CliOutput::failure(format!("error: {error}\n")),
     };
-    CliOutput::success(format!(
-        "{}\n",
-        crate::ast_with_options(file, source, options.parse_options)
-    ))
+    if json {
+        CliOutput::success(format!(
+            "{}\n",
+            crate::ast_json_with_options(file, source, options.parse_options)
+        ))
+    } else {
+        CliOutput::success(format!(
+            "{}\n",
+            crate::ast_with_options(file, source, options.parse_options)
+        ))
+    }
 }
 
 fn format_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
@@ -119,6 +131,43 @@ fn format_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
         Err(error) => return CliOutput::failure(format!("error: {error}\n")),
     };
     CliOutput::success(crate::format_source(file, source))
+}
+
+fn merge_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
+    if args.len() != 3 {
+        return CliOutput::usage_error("error: merge requires BASE OURS THEIRS\n".to_string());
+    }
+
+    let base = match read_source(&args[0], stdin) {
+        Ok(source) => source,
+        Err(error) => return CliOutput::failure(format!("error: {error}\n")),
+    };
+    let ours = match read_source(&args[1], stdin) {
+        Ok(source) => source,
+        Err(error) => return CliOutput::failure(format!("error: {error}\n")),
+    };
+    let theirs = match read_source(&args[2], stdin) {
+        Ok(source) => source,
+        Err(error) => return CliOutput::failure(format!("error: {error}\n")),
+    };
+
+    CliOutput::success(crate::merge_sources(
+        &args[0], &base, &args[1], &ours, &args[2], &theirs,
+    ))
+}
+
+fn regret_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
+    if args.is_empty() {
+        return CliOutput::usage_error("error: regret requires FILE\n".to_string());
+    }
+
+    let file = &args[0];
+    let source = match read_source(file, stdin) {
+        Ok(source) => source,
+        Err(error) => return CliOutput::failure(format!("error: {error}\n")),
+    };
+
+    CliOutput::success(crate::regret_summary(file, source))
 }
 
 fn read_source(path: &str, stdin: &mut dyn Read) -> io::Result<String> {
@@ -136,6 +185,7 @@ struct CliOptions {
     strategy: Strategy,
     seed: u64,
     parse_options: ParseOptions,
+    strict: bool,
 }
 
 impl Default for CliOptions {
@@ -144,6 +194,7 @@ impl Default for CliOptions {
             strategy: Strategy::Ours,
             seed: 0,
             parse_options: ParseOptions::default(),
+            strict: false,
         }
     }
 }
@@ -154,6 +205,7 @@ impl CliOptions {
             strategy: self.strategy,
             seed: self.seed,
             parse_options: self.parse_options,
+            strict: self.strict,
         }
     }
 }
@@ -181,6 +233,10 @@ fn parse_cli_options(args: &[String]) -> Result<CliOptions, String> {
                 options.parse_options.git_status_mode = true;
                 index += 1;
             }
+            "--strict" => {
+                options.strict = true;
+                index += 1;
+            }
             flag => {
                 options.strategy = flag.parse::<Strategy>()?;
                 index += 1;
@@ -191,8 +247,36 @@ fn parse_cli_options(args: &[String]) -> Result<CliOptions, String> {
     Ok(options)
 }
 
+fn split_ast_args(args: &[String]) -> (bool, Vec<String>) {
+    let mut json = false;
+    let mut option_args = Vec::new();
+    for arg in args {
+        if arg == "--json" {
+            json = true;
+        } else {
+            option_args.push(arg.clone());
+        }
+    }
+    (json, option_args)
+}
+
+fn strict_check(
+    name: impl Into<String>,
+    text: impl Into<String>,
+    parse_options: ParseOptions,
+) -> Result<(), Vec<crate::diagnostic::Diagnostic>> {
+    let program = crate::parse_with_options(name, text, parse_options);
+    if !program.diagnostics.is_empty() {
+        Err(program.diagnostics)
+    } else if program.has_conflicts() {
+        Ok(())
+    } else {
+        crate::check("__clean__", "")
+    }
+}
+
 fn help_text() -> String {
-    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random] [--seed N] [--accept-regret]\n    mergehell check FILE [--accept-regret]\n    mergehell ast FILE [--accept-regret]\n    mergehell format FILE\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
+    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random] [--seed N] [--accept-regret] [--strict]\n    mergehell check FILE [--accept-regret] [--strict]\n    mergehell ast FILE [--json] [--accept-regret]\n    mergehell format FILE\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
 }
 
 impl CliOutput {
@@ -224,7 +308,9 @@ impl CliOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::io::Cursor;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -351,13 +437,65 @@ mod tests {
     }
 
     #[test]
-    fn placeholder_commands_fail_clearly() {
-        let output = run_cli(&args(&["regret", "-"]), &mut Cursor::new(""));
+    fn ast_json_reads_stdin() {
+        let source = "<<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
+        let output = run_cli(&args(&["ast", "-", "--json"]), &mut Cursor::new(source));
+
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.contains("\"type\":\"Program\""));
+        assert!(output.stdout.contains("\"type\":\"Conflict\""));
+    }
+
+    #[test]
+    fn strict_run_fails_on_parser_warning() {
+        let source = "  <<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
+        let output = run_cli(&args(&["run", "-", "--strict"]), &mut Cursor::new(source));
 
         assert_eq!(output.exit_code, 1);
-        assert_eq!(
-            output.stderr,
-            "error: `regret` is declared but not implemented in Level 0\n"
+        assert!(output
+            .stderr
+            .contains("warning: indented conflict marker detected"));
+    }
+
+    #[test]
+    fn regret_summarizes_conflicts() {
+        let source = "<<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
+        let output = run_cli(&args(&["regret", "-"]), &mut Cursor::new(source));
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "regret: -\nconflicts: 1\ndiagnostics: 0\n");
+    }
+
+    #[test]
+    fn merge_emits_canonical_conflict() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("mergehell_merge_{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let base = dir.join("base.mh");
+        let ours = dir.join("ours.mh");
+        let theirs = dir.join("theirs.mh");
+        fs::write(&base, "base\n").unwrap();
+        fs::write(&ours, "ours\n").unwrap();
+        fs::write(&theirs, "theirs\n").unwrap();
+
+        let output = run_cli(
+            &args(&[
+                "merge",
+                base.to_str().unwrap(),
+                ours.to_str().unwrap(),
+                theirs.to_str().unwrap(),
+            ]),
+            &mut Cursor::new(""),
         );
+
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.contains("<<<<<<< "));
+        assert!(output.stdout.contains("ours\n"));
+        assert!(output.stdout.contains("||||||| "));
+        assert!(output.stdout.contains("base\n"));
+        assert!(output.stdout.contains("theirs\n"));
     }
 }

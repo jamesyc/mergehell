@@ -104,6 +104,10 @@ impl Program {
         self.items.iter().any(Node::has_conflicts)
     }
 
+    pub fn conflict_count(&self) -> usize {
+        self.items.iter().map(Node::conflict_count).sum()
+    }
+
     pub fn has_errors(&self) -> bool {
         self.diagnostics
             .iter()
@@ -121,6 +125,26 @@ impl Node {
             | Node::Hint(_)
             | Node::Status(_)
             | Node::Error(_) => false,
+        }
+    }
+
+    pub fn conflict_count(&self) -> usize {
+        match self {
+            Node::Conflict(node) => {
+                1 + node.ours.iter().map(Node::conflict_count).sum::<usize>()
+                    + node
+                        .base
+                        .as_ref()
+                        .map(|base| base.items.iter().map(Node::conflict_count).sum())
+                        .unwrap_or(0)
+                    + node.theirs.iter().map(Node::conflict_count).sum::<usize>()
+            }
+            Node::RawText(_)
+            | Node::Diff(_)
+            | Node::Hunk(_)
+            | Node::Hint(_)
+            | Node::Status(_)
+            | Node::Error(_) => 0,
         }
     }
 
@@ -155,6 +179,89 @@ impl Metadata {
 
         Self { raw, tokens }
     }
+}
+
+pub fn program_to_json(program: &Program) -> String {
+    let mut json = String::new();
+    json.push_str("{\"type\":\"Program\",\"conflicts\":");
+    json.push_str(&program.conflict_count().to_string());
+    json.push_str(",\"diagnostics\":");
+    json.push_str(&program.diagnostics.len().to_string());
+    json.push_str(",\"items\":[");
+    for (index, item) in program.items.iter().enumerate() {
+        if index > 0 {
+            json.push(',');
+        }
+        node_to_json(item, &mut json);
+    }
+    json.push_str("]}");
+    json
+}
+
+fn node_to_json(node: &Node, json: &mut String) {
+    match node {
+        Node::Conflict(node) => {
+            json.push_str("{\"type\":\"Conflict\",\"command\":");
+            json_string(&node.command.raw, json);
+            json.push_str(",\"metadata\":");
+            json_string(&node.metadata.raw, json);
+            json.push_str(",\"ours\":[");
+            nodes_to_json(&node.ours, json);
+            json.push_str("],\"base\":");
+            if let Some(base) = &node.base {
+                json.push('[');
+                nodes_to_json(&base.items, json);
+                json.push(']');
+            } else {
+                json.push_str("null");
+            }
+            json.push_str(",\"theirs\":[");
+            nodes_to_json(&node.theirs, json);
+            json.push_str("]}");
+        }
+        Node::RawText(node) => text_node_to_json("RawText", &node.text, json),
+        Node::Diff(node) => text_node_to_json("Diff", &node.text, json),
+        Node::Hunk(node) => text_node_to_json("Hunk", &node.text, json),
+        Node::Hint(node) => text_node_to_json("Hint", &node.text, json),
+        Node::Status(node) => text_node_to_json("Status", &node.text, json),
+        Node::Error(node) => text_node_to_json("Error", &node.message, json),
+    }
+}
+
+fn nodes_to_json(nodes: &[Node], json: &mut String) {
+    for (index, node) in nodes.iter().enumerate() {
+        if index > 0 {
+            json.push(',');
+        }
+        node_to_json(node, json);
+    }
+}
+
+fn text_node_to_json(kind: &str, text: &str, json: &mut String) {
+    json.push_str("{\"type\":");
+    json_string(kind, json);
+    json.push_str(",\"text\":");
+    json_string(text, json);
+    json.push('}');
+}
+
+fn json_string(value: &str, json: &mut String) {
+    json.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => json.push_str("\\\""),
+            '\\' => json.push_str("\\\\"),
+            '\n' => json.push_str("\\n"),
+            '\r' => json.push_str("\\r"),
+            '\t' => json.push_str("\\t"),
+            ch if ch.is_control() => {
+                json.push_str("\\u");
+                json.push_str(&format!("{:04x}", ch as u32));
+            }
+            ch => json.push(ch),
+        }
+    }
+    json.push('"');
 }
 
 #[cfg(test)]
@@ -229,5 +336,47 @@ mod tests {
         );
 
         assert!(!program.has_conflicts());
+    }
+
+    #[test]
+    fn counts_nested_conflicts() {
+        let span = span();
+        let nested = Node::Conflict(ConflictNode {
+            command: CommandHead::parse("print"),
+            ours: Vec::new(),
+            base: None,
+            theirs: Vec::new(),
+            metadata: Metadata::parse("print"),
+            span,
+        });
+        let program = Program::new(
+            vec![Node::Conflict(ConflictNode {
+                command: CommandHead::parse("HEAD"),
+                ours: vec![nested],
+                base: None,
+                theirs: Vec::new(),
+                metadata: Metadata::parse("feature"),
+                span,
+            })],
+            Vec::new(),
+        );
+
+        assert_eq!(program.conflict_count(), 2);
+    }
+
+    #[test]
+    fn renders_program_json() {
+        let program = Program::new(
+            vec![Node::RawText(RawTextNode {
+                text: "hello \"json\"".to_string(),
+                span: span(),
+            })],
+            Vec::new(),
+        );
+
+        assert_eq!(
+            program_to_json(&program),
+            "{\"type\":\"Program\",\"conflicts\":0,\"diagnostics\":0,\"items\":[{\"type\":\"RawText\",\"text\":\"hello \\\"json\\\"\"}]}"
+        );
     }
 }
