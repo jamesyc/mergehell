@@ -2,8 +2,7 @@
 
 ## Current Step
 
-- In progress: implement a Phase 7 extension slice covering standard modules,
-  rerere persistence, binary diagnostics, and `format --worse`.
+- In progress: implement Phase 8 hardening and release-readiness checks.
 
 ## Completed Steps
 
@@ -89,7 +88,18 @@
   21 CLI integration tests, binary tests, and doc tests all passed.
 - Staged the verified Phase 7 extension changes.
 - Committed the verified Phase 7 extension slice.
+- Added Phase 8 hardening tests for marker-heavy parser inputs, large
+  conflicted input, and parse-format-parse conflict preservation.
+- Added package metadata, README CLI/development documentation, checked-in
+  examples for Level 0, Level 1, and patch execution, and CLI integration tests
+  covering those examples.
+- Ran `cargo fmt --all` successfully for the Phase 8 slice.
+- Ran `cargo test --all` successfully for the Phase 8 slice: 163 unit tests,
+  24 CLI integration tests, binary tests, and doc tests all passed.
+- Staged the verified Phase 8 hardening, documentation, example, and metadata
+  changes.
+- Committed the verified Phase 8 hardening slice.
 
 ## Next Steps
 
-- Continue with Phase 8 hardening and release readiness.
+- Audit completion against `plan/ARCH.md` and `plan/IMPLEMENT.md`.

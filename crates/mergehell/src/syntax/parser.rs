@@ -385,4 +385,39 @@ mod tests {
         );
         assert!(program.has_conflicts());
     }
+
+    #[test]
+    fn marker_heavy_inputs_do_not_panic() {
+        let inputs = [
+            "",
+            "<<<<<<<\n|||||||\n=======\n>>>>>>>\n",
+            ">>>>>>>\n<<<<<<<\n=======\n|||||||\n",
+            "<<<<<<< outer\n<<<<<<< inner\n=======\n>>>>>>>\n",
+            "======\n<<<<<<\n>>>>>>\n||||||\n",
+            "diff --git a b\n@@@ -1 -1 +1 @@@\n<<<<<<< print\n+hello\n=======\n-goodbye\n>>>>>>> print\n",
+        ];
+
+        for input in inputs {
+            let result = std::panic::catch_unwind(|| parse(input));
+
+            assert!(result.is_ok(), "parser panicked for input: {input:?}");
+        }
+    }
+
+    #[test]
+    fn parses_large_conflicted_input_without_losing_conflict_count() {
+        let mut source = String::new();
+        for index in 0..1_000 {
+            source.push_str("<<<<<<< print\n");
+            source.push_str(&format!("ours {index}\n"));
+            source.push_str("=======\n");
+            source.push_str(&format!("theirs {index}\n"));
+            source.push_str(">>>>>>> print\n");
+        }
+
+        let program = parse(&source);
+
+        assert!(!program.has_errors());
+        assert_eq!(program.conflict_count(), 1_000);
+    }
 }

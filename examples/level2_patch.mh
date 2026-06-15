@@ -1,0 +1,11 @@
+diff --git a/stdin b/stdout
+index deadbee..c0ffee0
+--- a/stdin
++++ b/stdout
+@@ -1,2 +1,2 @@ main
+<<<<<<< print
++patched hello
+-old hello
+=======
++patched fallback
+>>>>>>> print

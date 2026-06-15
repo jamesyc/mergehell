@@ -1,0 +1,15 @@
+<<<<<<< let name
+James
+||||||| string default
+User
+=======
+Remote
+>>>>>>> feature/env-name
+
+<<<<<<< print
+Hello, ${name}
+||||||| string
+Hello, User
+=======
+Goodbye, ${name}
+>>>>>>> print

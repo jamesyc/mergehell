@@ -15,6 +15,13 @@ fn expected(name: &str) -> String {
     std::fs::read_to_string(fixture(name)).expect("read fixture")
 }
 
+fn example(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("examples")
+        .join(name)
+}
+
 #[test]
 fn help_works() {
     let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
@@ -55,6 +62,60 @@ fn run_hello_theirs_matches_readme() {
         expected("hello.theirs.expected")
     );
     assert_eq!(output.stderr, Vec::<u8>::new());
+}
+
+#[test]
+fn run_checked_in_level0_example() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            example("level0_hello.mh").to_str().unwrap(),
+            "--ours",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "Hello, world!\n"
+    );
+}
+
+#[test]
+fn run_checked_in_level1_example() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            example("level1_variables.mh").to_str().unwrap(),
+            "--base",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "Hello, User\n"
+    );
+}
+
+#[test]
+fn run_checked_in_patch_example() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            example("level2_patch.mh").to_str().unwrap(),
+            "--ours",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "patched hello\n"
+    );
 }
 
 #[test]

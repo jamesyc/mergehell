@@ -2,7 +2,11 @@
 name = "mergehell"
 version = "0.1.0"
 edition = "2021"
+description = "Reference interpreter for the MergeHell conflict-marker language"
 license = "MIT"
+readme = "../../README.md"
+keywords = ["language", "git", "merge", "conflict"]
+categories = ["command-line-utilities", "development-tools"]
 
 [lib]
 name = "mergehell"
@@ -11,4 +15,3 @@ path = "src/lib.rs"
 [[bin]]
 name = "mergehell"
 path = "src/bin/mergehell.rs"
-

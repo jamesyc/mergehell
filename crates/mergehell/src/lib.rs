@@ -220,4 +220,24 @@ mod tests {
 
         assert_eq!(summary, "regret: test.mh\nconflicts: 1\ndiagnostics: 0\n");
     }
+
+    #[test]
+    fn format_parse_format_preserves_level_zero_conflict_count() {
+        let source = "<<<<<<< print\nhello\n=======\nbye\n>>>>>>> print\n";
+        let formatted = format_source("test.mh", source);
+        let reparsed = parse("test.mh", formatted);
+
+        assert_eq!(reparsed.conflict_count(), 1);
+        assert!(!reparsed.has_errors());
+    }
+
+    #[test]
+    fn worse_format_parse_preserves_original_conflicts() {
+        let source = "<<<<<<< print\nhello\n=======\nbye\n>>>>>>> print\n";
+        let formatted = format_source_worse("test.mh", source);
+        let reparsed = parse("test.mh", formatted);
+
+        assert_eq!(reparsed.conflict_count(), 1);
+        assert!(!reparsed.has_errors());
+    }
 }

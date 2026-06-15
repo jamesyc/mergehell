@@ -209,6 +209,39 @@ Recommended merge driver shape:
 
 The merge driver should preserve and canonicalize conflicts rather than resolve them.
 
+## CLI Reference
+
+```bash
+mergehell run FILE [--ours|--theirs|--base|--union|--random|--git] [--seed N] [--accept-regret] [--strict]
+mergehell check FILE [--accept-regret] [--strict]
+mergehell ast FILE [--json] [--accept-regret]
+mergehell format FILE [--worse]
+mergehell merge BASE OURS THEIRS
+mergehell regret FILE
+```
+
+Examples:
+
+```bash
+mergehell run examples/level0_hello.mh --ours
+mergehell run examples/level1_variables.mh --base
+mergehell run examples/level2_patch.mh --ours
+mergehell ast examples/level0_hello.mh --json
+mergehell format examples/level0_hello.mh --worse
+```
+
+`run -` reads from stdin, including diff-like input. Diff input strips `+`
+prefixes, skips `-` lines in forward execution, and preserves context lines.
+
+## Development
+
+Run the local verification suite with:
+
+```bash
+cargo fmt --all
+cargo test --all
+```
+
 ## Non-Goals
 
 MergeHell does not aim to be readable, safe, easy to lint, compatible with normal development workflows, or accepted by code review.
