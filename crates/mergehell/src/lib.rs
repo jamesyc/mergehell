@@ -1,0 +1,91 @@
+pub mod cli;
+pub mod commands;
+pub mod diagnostic;
+pub mod format;
+pub mod git;
+pub mod resolve;
+pub mod runtime;
+pub mod source;
+pub mod syntax;
+
+use diagnostic::{Diagnostic, Severity};
+use resolve::strategy::Strategy;
+use runtime::eval::RunOutput;
+use source::SourceFile;
+use syntax::parser::{parse_source, ParseOptions};
+
+pub use syntax::ast::Program;
+
+pub fn parse(name: impl Into<String>, text: impl Into<String>) -> Program {
+    let source = SourceFile::new(name, text);
+    parse_source(&source, ParseOptions::default())
+}
+
+pub fn run(name: impl Into<String>, text: impl Into<String>, strategy: Strategy) -> RunOutput {
+    runtime::eval::run_source(name, text, strategy)
+}
+
+pub fn check(name: impl Into<String>, text: impl Into<String>) -> Result<(), Vec<Diagnostic>> {
+    let program = parse(name, text);
+    let errors: Vec<Diagnostic> = program
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Error)
+        .cloned()
+        .collect();
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    if program.has_conflicts() {
+        Ok(())
+    } else {
+        Err(vec![Diagnostic::runtime_error(
+            "fatal: no conflict markers found",
+            None,
+        )
+        .with_hint("hint: this appears to be valid software")])
+    }
+}
+
+pub fn ast(name: impl Into<String>, text: impl Into<String>) -> String {
+    format!("{:#?}", parse(name, text))
+}
+
+pub fn format_source(_name: impl Into<String>, text: impl Into<String>) -> String {
+    format::format_source(&text.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_api_returns_program() {
+        let program = parse(
+            "test.mh",
+            "<<<<<<< print\nhello\n=======\nbye\n>>>>>>> print\n",
+        );
+
+        assert!(program.has_conflicts());
+        assert!(program.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn check_fails_clean_source() {
+        let diagnostics = check("clean.mh", "fn main() {}\n").unwrap_err();
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].message, "fatal: no conflict markers found");
+        assert_eq!(
+            diagnostics[0].hints,
+            vec!["hint: this appears to be valid software".to_string()]
+        );
+    }
+
+    #[test]
+    fn format_source_is_currently_identity() {
+        let source = "<<<<<<< print\nhello\n=======\nbye\n>>>>>>> print\n";
+
+        assert_eq!(format_source("test.mh", source), source);
+    }
+}

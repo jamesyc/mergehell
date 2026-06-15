@@ -1,0 +1,14 @@
+[package]
+name = "mergehell"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "mergehell"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mergehell"
+path = "src/bin/mergehell.rs"
+

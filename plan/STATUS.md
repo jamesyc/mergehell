@@ -1,0 +1,39 @@
+# MergeHell Implementation Status
+
+## Current Step
+
+- Complete: Phase 0/Level 0 MVP is implemented, verified, and committed.
+
+## Completed Steps
+
+- Read `plan/ARCH.md` and the first implementation phases in
+  `plan/IMPLEMENT.md`.
+- Read the rest of `plan/IMPLEMENT.md`, `SPEC.md`, and `README.md`.
+- Confirmed the repository is clean on `main`.
+- Created this status file to track progress after each step.
+- Added the Cargo workspace, `mergehell` crate metadata, public library API
+  entrypoints, structured diagnostics, source spans, and source line iteration.
+- Added syntax modules for AST definitions, line classification, and
+  stack-based parsing with recovery for nested conflicts, base lanes, indented
+  marker warnings, unexpected lane markers, and unclosed conflicts.
+- Added `ours`/`theirs` resolver strategies, deterministic RNG scaffolding,
+  runtime context/value/control modules, `print` command behavior,
+  transparent handling for unknown command heads, CLI wiring, Git/format module
+  placeholders, README-style fixtures, and CLI integration tests.
+- Installed the Homebrew Rust toolchain because `cargo`, `rustc`, and
+  `rustfmt` were not present on `PATH`.
+- Ran `cargo fmt --all` successfully.
+- Ran `cargo test --all`; compilation succeeded, 70 unit tests passed, and 1
+  help-text assertion failed. The remaining work is to align CLI help wording
+  and rerun tests.
+- Fixed the CLI help text assertion and removed the parser `unused_mut`
+  warning, then reran `cargo fmt --all` successfully.
+- Ran `cargo test --all` successfully: 71 unit tests, 6 CLI integration tests,
+  binary tests, and doc tests all passed.
+- Staged the verified implementation files, fixtures, lockfile, and status
+  update for commit.
+- Committed the verified Level 0 MVP implementation.
+
+## Next Steps
+
+- Continue with Phase 2 parser robustness and Level 1 runtime features.
