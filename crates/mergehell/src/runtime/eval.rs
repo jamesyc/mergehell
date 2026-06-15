@@ -469,6 +469,18 @@ fn selected_lanes<'a>(
             let index = context.choose_index(lanes.len()).unwrap_or(0);
             Ok(vec![lanes.remove(index)])
         }
+        Strategy::Git => {
+            let strategy = crate::git::status::strategy_from_current_repo()
+                .map_err(|error| vec![git_strategy_diagnostic(error, conflict)])?;
+            selected_lanes(
+                conflict,
+                RunOptions {
+                    strategy,
+                    ..options
+                },
+                context,
+            )
+        }
     }
 }
 
@@ -600,6 +612,18 @@ fn runtime_error(message: impl Into<String>, conflict: &ConflictNode) -> Diagnos
 fn no_base_diagnostic(conflict: &ConflictNode) -> Diagnostic {
     Diagnostic::runtime_error("error: no common ancestor found", Some(conflict.span))
         .with_hint("hint: manufacture a past and try again")
+}
+
+fn git_strategy_diagnostic(
+    error: crate::git::status::GitStrategyError,
+    conflict: &ConflictNode,
+) -> Diagnostic {
+    let diagnostic = Diagnostic::runtime_error(error.message, Some(conflict.span));
+    if let Some(hint) = error.hint {
+        diagnostic.with_hint(hint)
+    } else {
+        diagnostic
+    }
 }
 
 fn runtime_error_for_parser_node(node: &ErrorNode) -> Diagnostic {

@@ -276,7 +276,7 @@ fn strict_check(
 }
 
 fn help_text() -> String {
-    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random] [--seed N] [--accept-regret] [--strict]\n    mergehell check FILE [--accept-regret] [--strict]\n    mergehell ast FILE [--json] [--accept-regret]\n    mergehell format FILE\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
+    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random|--git] [--seed N] [--accept-regret] [--strict]\n    mergehell check FILE [--accept-regret] [--strict]\n    mergehell ast FILE [--json] [--accept-regret]\n    mergehell format FILE\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
 }
 
 impl CliOutput {

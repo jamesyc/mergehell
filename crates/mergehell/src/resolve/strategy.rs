@@ -9,6 +9,7 @@ pub enum Strategy {
     Base,
     Union,
     Random,
+    Git,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,6 +46,7 @@ impl Strategy {
             Strategy::Base => "--base",
             Strategy::Union => "--union",
             Strategy::Random => "--random",
+            Strategy::Git => "--git",
         }
     }
 }
@@ -59,6 +61,7 @@ impl FromStr for Strategy {
             "--base" | "base" => Ok(Strategy::Base),
             "--union" | "union" => Ok(Strategy::Union),
             "--random" | "random" => Ok(Strategy::Random),
+            "--git" | "git" => Ok(Strategy::Git),
             other => Err(format!("unsupported strategy: {other}")),
         }
     }
@@ -146,6 +149,7 @@ mod tests {
         assert_eq!("--base".parse::<Strategy>(), Ok(Strategy::Base));
         assert_eq!("union".parse::<Strategy>(), Ok(Strategy::Union));
         assert_eq!("--random".parse::<Strategy>(), Ok(Strategy::Random));
+        assert_eq!("git".parse::<Strategy>(), Ok(Strategy::Git));
     }
 
     #[test]

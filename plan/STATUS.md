@@ -2,7 +2,7 @@
 
 ## Current Step
 
-- In progress: implement Phase 5 CLI completeness and developer tooling.
+- Complete through Phase 6 Git strategy foundation; Phase 7/8 remain next.
 
 ## Completed Steps
 
@@ -59,7 +59,15 @@
   18 CLI integration tests, binary tests, and doc tests all passed.
 - Staged the verified Phase 5 CLI/tooling and status changes.
 - Committed the verified Phase 5 CLI/tooling slice.
+- Added Phase 6 Git strategy foundation with `GitState` abstractions, real and
+  fake state providers, heuristic strategy decisions, `--git` strategy parsing,
+  runtime dispatch, and unit coverage for representative Git states.
+- Ran `cargo fmt --all` successfully for the Phase 6 slice.
+- Ran `cargo test --all` successfully for the Phase 6 slice: 138 unit tests,
+  18 CLI integration tests, binary tests, and doc tests all passed.
+- Staged the verified Phase 6 Git strategy and status changes.
+- Committed the verified Phase 6 Git strategy foundation.
 
 ## Next Steps
 
-- Continue with Phase 6 Git integration.
+- Continue with Phase 7 extensions and Phase 8 hardening.
