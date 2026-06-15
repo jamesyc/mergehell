@@ -286,7 +286,7 @@ fn strict_check(
 }
 
 fn help_text() -> String {
-    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random|--git] [--seed N] [--accept-regret] [--strict]\n    mergehell check FILE [--accept-regret] [--strict]\n    mergehell ast FILE [--json] [--accept-regret]\n    mergehell format FILE [--worse]\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
+    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random|--git|--blame] [--seed N] [--accept-regret] [--strict]\n    mergehell check FILE [--accept-regret] [--strict]\n    mergehell ast FILE [--json] [--accept-regret]\n    mergehell format FILE [--worse]\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
 }
 
 impl CliOutput {
@@ -392,6 +392,17 @@ mod tests {
 
         assert_eq!(left.exit_code, 0);
         assert_eq!(left.stdout, right.stdout);
+    }
+
+    #[test]
+    fn run_blame_reports_capability_diagnostic_without_metadata() {
+        let source = "<<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
+        let output = run_cli(&args(&["run", "-", "--blame"]), &mut Cursor::new(source));
+
+        assert_eq!(output.exit_code, 1);
+        assert!(output
+            .stderr
+            .contains("fatal: blame strategy requires blame metadata"));
     }
 
     #[test]

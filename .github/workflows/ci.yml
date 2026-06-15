@@ -1,0 +1,20 @@
+name: MergeHell CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run tests
+        run: cargo test --all
+      - name: Check example source
+        run: cargo run -- run examples/level0_hello.mh --ours
+      - name: Validate conflict fixture
+        run: cargo run -- check tests/fixtures/hello.mh

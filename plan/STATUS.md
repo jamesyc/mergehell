@@ -2,7 +2,8 @@
 
 ## Current Step
 
-- In progress: implement Phase 8 hardening and release-readiness checks.
+- Complete: final requirement-by-requirement audit and verification against
+  `plan/ARCH.md` and `plan/IMPLEMENT.md`.
 
 ## Completed Steps
 
@@ -99,7 +100,31 @@
 - Staged the verified Phase 8 hardening, documentation, example, and metadata
   changes.
 - Committed the verified Phase 8 hardening slice.
+- Audited remaining Phase 7/8 evidence and ran `cargo build --all`
+  successfully; remaining gaps are blame strategy evidence, CI examples, and
+  diagnostic-driven-development documentation.
+- Added `--blame` strategy parsing with a provider-backed blame decision layer,
+  deterministic fake-provider tests, a real-provider capability diagnostic,
+  CI workflow examples, and diagnostic-driven-development documentation.
+- Ran `cargo fmt --all` successfully for the completion-gap slice.
+- Ran `cargo test --all` successfully for the completion-gap slice: 169 unit
+  tests, 24 CLI integration tests, binary tests, and doc tests all passed.
+- Staged the verified completion-gap changes.
+- Committed the verified completion-gap slice.
+- Resumed final audit, confirmed the branch is `main` ahead of `origin/main`
+  by 9 commits with no unstaged changes, and confirmed the architecture and
+  implementation documents live under `plan/`.
+- Audited `plan/ARCH.md`, `plan/IMPLEMENT.md`, the source tree, tests,
+  examples, README, and CI workflow; the implemented modules, CLI surface,
+  parser/runtime/Git/format boundaries, and extension helpers match the planned
+  phases.
+- Ran final `cargo fmt --all -- --check` successfully.
+- Ran final `cargo test --all` successfully: 169 unit tests, 24 CLI
+  integration tests, binary tests, and doc tests all passed.
+- Ran final `cargo build --all` successfully.
+- Completed final audit and verification; no remaining implementation gaps are
+  known against `plan/ARCH.md` and `plan/IMPLEMENT.md`.
 
 ## Next Steps
 
-- Audit completion against `plan/ARCH.md` and `plan/IMPLEMENT.md`.
+- None.

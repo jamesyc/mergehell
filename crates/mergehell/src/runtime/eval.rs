@@ -495,6 +495,18 @@ fn selected_lanes<'a>(
                 context,
             )
         }
+        Strategy::Blame => {
+            let strategy = crate::git::blame::strategy_from_real_blame()
+                .map_err(|error| vec![git_strategy_diagnostic(error, conflict)])?;
+            selected_lanes(
+                conflict,
+                RunOptions {
+                    strategy,
+                    ..options
+                },
+                context,
+            )
+        }
     }
 }
 

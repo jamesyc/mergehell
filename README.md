@@ -212,7 +212,7 @@ The merge driver should preserve and canonicalize conflicts rather than resolve 
 ## CLI Reference
 
 ```bash
-mergehell run FILE [--ours|--theirs|--base|--union|--random|--git] [--seed N] [--accept-regret] [--strict]
+mergehell run FILE [--ours|--theirs|--base|--union|--random|--git|--blame] [--seed N] [--accept-regret] [--strict]
 mergehell check FILE [--accept-regret] [--strict]
 mergehell ast FILE [--json] [--accept-regret]
 mergehell format FILE [--worse]
@@ -240,6 +240,24 @@ Run the local verification suite with:
 ```bash
 cargo fmt --all
 cargo test --all
+```
+
+## Diagnostic-Driven Development
+
+Syntax, runtime, type, and binary failures are rendered as MergeHell-looking
+source where practical. That means error output can be saved and inspected with
+the same parser:
+
+```bash
+mergehell run app.mh --ours 2> errors.mh
+mergehell ast errors.mh
+```
+
+For strict parser warning handling, use:
+
+```bash
+mergehell run app.mh --strict
+mergehell check app.mh --strict
 ```
 
 ## Non-Goals
