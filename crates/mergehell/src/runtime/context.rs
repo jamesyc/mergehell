@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use crate::resolve::rng::SeededRng;
 use crate::syntax::ast::Node;
@@ -17,6 +18,8 @@ pub struct RuntimeContext {
     scopes: Vec<HashMap<String, Value>>,
     functions: HashMap<String, Function>,
     rng: SeededRng,
+    current_dir: Option<PathBuf>,
+    import_stack: Vec<PathBuf>,
 }
 
 impl RuntimeContext {
@@ -26,7 +29,18 @@ impl RuntimeContext {
             scopes: vec![HashMap::new()],
             functions: HashMap::new(),
             rng: SeededRng::new(seed),
+            current_dir: None,
+            import_stack: Vec::new(),
         }
+    }
+
+    pub fn with_source_name(mut self, source_name: &str) -> Self {
+        let path = Path::new(source_name);
+        self.current_dir = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(Path::to_path_buf);
+        self
     }
 
     pub fn write(&mut self, text: &str) {
@@ -72,6 +86,34 @@ impl RuntimeContext {
 
     pub fn choose_index(&mut self, len: usize) -> Option<usize> {
         self.rng.choose_index(len)
+    }
+
+    pub fn resolve_import_path(&self, raw_path: &str) -> PathBuf {
+        let path = PathBuf::from(raw_path);
+        if path.is_absolute() {
+            path
+        } else if let Some(current_dir) = &self.current_dir {
+            current_dir.join(path)
+        } else {
+            path
+        }
+    }
+
+    pub fn replace_current_dir(&mut self, current_dir: Option<PathBuf>) -> Option<PathBuf> {
+        std::mem::replace(&mut self.current_dir, current_dir)
+    }
+
+    pub fn enter_import(&mut self, path: PathBuf) -> bool {
+        if self.import_stack.contains(&path) {
+            false
+        } else {
+            self.import_stack.push(path);
+            true
+        }
+    }
+
+    pub fn leave_import(&mut self) {
+        self.import_stack.pop();
     }
 
     pub fn into_stdout(self) -> String {
@@ -171,5 +213,30 @@ mod tests {
         let mut right = RuntimeContext::new(7);
 
         assert_eq!(left.choose_index(3), right.choose_index(3));
+    }
+
+    #[test]
+    fn resolves_imports_relative_to_source_file() {
+        let context = RuntimeContext::new(0).with_source_name("/tmp/programs/main.mh");
+
+        assert_eq!(
+            context.resolve_import_path("lib.mh"),
+            PathBuf::from("/tmp/programs/lib.mh")
+        );
+        assert_eq!(
+            context.resolve_import_path("/absolute/lib.mh"),
+            PathBuf::from("/absolute/lib.mh")
+        );
+    }
+
+    #[test]
+    fn detects_import_cycles_on_active_stack() {
+        let mut context = RuntimeContext::new(0);
+        let path = PathBuf::from("module.mh");
+
+        assert!(context.enter_import(path.clone()));
+        assert!(!context.enter_import(path));
+        context.leave_import();
+        assert!(context.enter_import(PathBuf::from("module.mh")));
     }
 }

@@ -2,8 +2,8 @@
 
 ## Current Step
 
-- In progress: implement Phase 2 parser option exposure and Phase 3/Level 1
-  runtime features.
+- In progress: implement Phase 4 control flow, errors, imports, explicit
+  resolve, and basic type diagnostics.
 
 ## Completed Steps
 
@@ -44,8 +44,15 @@
   10 CLI integration tests, binary tests, and doc tests all passed.
 - Staged the verified Level 1 runtime, CLI, fixture, and status changes.
 - Committed the verified Level 1 runtime slice.
+- Added Phase 4 runtime support for `return`, `try`, `throw`, local file
+  `import`, explicit `resolve`, and base-lane type diagnostics for `let`, plus
+  unit and CLI fixture coverage for those states.
+- Ran `cargo fmt --all` successfully for the Phase 4 slice.
+- Ran `cargo test --all` successfully for the Phase 4 slice: 121 unit tests,
+  14 CLI integration tests, binary tests, and doc tests all passed.
+- Staged the verified Phase 4 runtime, fixture, and status changes.
+- Committed the verified Phase 4 runtime slice.
 
 ## Next Steps
 
-- Continue with Phase 4 control flow, errors, imports, explicit resolve, and
-  type diagnostics.
+- Continue with Phase 5 CLI completeness and developer tooling.

@@ -12,6 +12,11 @@ pub enum CommandDispatch {
     Repeat,
     Function,
     Call,
+    Return,
+    Try,
+    Throw,
+    Import,
+    Resolve,
     Transparent,
 }
 
@@ -23,6 +28,11 @@ pub fn dispatch_for(command_name: &str) -> CommandDispatch {
         "repeat" => CommandDispatch::Repeat,
         "function" => CommandDispatch::Function,
         "call" => CommandDispatch::Call,
+        "return" => CommandDispatch::Return,
+        "try" => CommandDispatch::Try,
+        "throw" => CommandDispatch::Throw,
+        "import" => CommandDispatch::Import,
+        "resolve" => CommandDispatch::Resolve,
         _ => CommandDispatch::Transparent,
     }
 }
@@ -43,6 +53,11 @@ mod tests {
         assert_eq!(dispatch_for("repeat"), CommandDispatch::Repeat);
         assert_eq!(dispatch_for("function"), CommandDispatch::Function);
         assert_eq!(dispatch_for("call"), CommandDispatch::Call);
+        assert_eq!(dispatch_for("return"), CommandDispatch::Return);
+        assert_eq!(dispatch_for("try"), CommandDispatch::Try);
+        assert_eq!(dispatch_for("throw"), CommandDispatch::Throw);
+        assert_eq!(dispatch_for("import"), CommandDispatch::Import);
+        assert_eq!(dispatch_for("resolve"), CommandDispatch::Resolve);
     }
 
     #[test]

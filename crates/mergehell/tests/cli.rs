@@ -139,6 +139,73 @@ fn run_seeded_random_is_reproducible() {
 }
 
 #[test]
+fn run_phase4_import_fixture() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            fixture("phase4_import.mh").to_str().unwrap(),
+            "--ours",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "from imported fixture\n"
+    );
+}
+
+#[test]
+fn run_phase4_try_recovers_from_throw() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args(["run", fixture("phase4_try.mh").to_str().unwrap(), "--ours"])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "recovered\n"
+    );
+}
+
+#[test]
+fn run_phase4_resolve_overrides_nested_strategy() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            fixture("phase4_resolve.mh").to_str().unwrap(),
+            "--ours",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "resolved theirs\n"
+    );
+}
+
+#[test]
+fn run_phase4_type_error_renders_mergehell_diagnostic() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            fixture("phase4_type_error.mh").to_str().unwrap(),
+            "--ours",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+    assert!(stderr.contains("CONFLICT (type): Merge conflict in age"));
+    assert!(stderr.contains("<<<<<<< expected\nint\n=======\nstring\n"));
+}
+
+#[test]
 fn check_succeeds_for_conflict_fixture() {
     let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
         .args(["check", fixture("hello.mh").to_str().unwrap()])

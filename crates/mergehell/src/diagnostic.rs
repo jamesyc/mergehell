@@ -56,6 +56,10 @@ impl Diagnostic {
         Self::new(DiagnosticKind::Runtime, Severity::Error, message, span)
     }
 
+    pub fn type_error(message: impl Into<String>, span: Option<Span>) -> Self {
+        Self::new(DiagnosticKind::Type, Severity::Error, message, span)
+    }
+
     pub fn with_expected_actual(
         mut self,
         expected: impl Into<String>,

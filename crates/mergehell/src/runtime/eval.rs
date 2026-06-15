@@ -1,4 +1,9 @@
-use crate::commands::{binding, control_flow, dispatch_for, functions, print, CommandDispatch};
+use std::fs;
+use std::path::PathBuf;
+
+use crate::commands::{
+    binding, control_flow, dispatch_for, functions, import, print, CommandDispatch,
+};
 use crate::diagnostic::{render_diagnostics, Diagnostic, Severity};
 use crate::resolve::strategy::{
     lanes_in_order, BaseResolver, OursResolver, Resolver, SelectedLane, Strategy, TheirsResolver,
@@ -10,7 +15,10 @@ use crate::syntax::ast::{
 use crate::syntax::parser::{parse_source, ParseOptions};
 
 use super::context::{Function, RuntimeContext};
+use super::control::EvalOutcome;
 use super::value::Value;
+
+type EvalResult = Result<EvalOutcome, Vec<Diagnostic>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RunOptions {
@@ -56,7 +64,8 @@ pub fn run_source_with_options(
     text: impl Into<String>,
     options: RunOptions,
 ) -> RunOutput {
-    let source = SourceFile::new(name, text);
+    let name = name.into();
+    let source = SourceFile::new(name.clone(), text);
     let program = parse_source(&source, options.parse_options);
 
     if program.has_errors() {
@@ -73,7 +82,7 @@ pub fn run_source_with_options(
         };
     }
 
-    let mut context = RuntimeContext::new(options.seed);
+    let mut context = RuntimeContext::new(options.seed).with_source_name(&name);
     let eval_result = eval_program(&program, options, &mut context);
     let warnings = program
         .diagnostics
@@ -105,30 +114,25 @@ pub fn eval_program(
     options: RunOptions,
     context: &mut RuntimeContext,
 ) -> Result<(), Vec<Diagnostic>> {
-    eval_nodes(&program.items, options, context)
+    eval_nodes(&program.items, options, context).map(|_| ())
 }
 
-fn eval_nodes(
-    nodes: &[Node],
-    options: RunOptions,
-    context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+fn eval_nodes(nodes: &[Node], options: RunOptions, context: &mut RuntimeContext) -> EvalResult {
     for node in nodes {
-        eval_node(node, options, context)?;
+        let outcome = eval_node(node, options, context)?;
+        if !outcome.is_unit() {
+            return Ok(outcome);
+        }
     }
-    Ok(())
+    Ok(EvalOutcome::Unit)
 }
 
-fn eval_node(
-    node: &Node,
-    options: RunOptions,
-    context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+fn eval_node(node: &Node, options: RunOptions, context: &mut RuntimeContext) -> EvalResult {
     match node {
         Node::Conflict(conflict) => eval_conflict(conflict, options, context),
         Node::Error(error) => Err(vec![runtime_error_for_parser_node(error)]),
         Node::RawText(_) | Node::Diff(_) | Node::Hunk(_) | Node::Hint(_) | Node::Status(_) => {
-            Ok(())
+            Ok(EvalOutcome::Unit)
         }
     }
 }
@@ -137,7 +141,7 @@ fn eval_conflict(
     conflict: &ConflictNode,
     options: RunOptions,
     context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+) -> EvalResult {
     match dispatch_for(&conflict.command.name) {
         CommandDispatch::Print => eval_print(conflict, options, context),
         CommandDispatch::Let => eval_let(conflict, options, context),
@@ -145,6 +149,11 @@ fn eval_conflict(
         CommandDispatch::Repeat => eval_repeat(conflict, options, context),
         CommandDispatch::Function => eval_function(conflict, options, context),
         CommandDispatch::Call => eval_call(conflict, options, context),
+        CommandDispatch::Return => eval_return(conflict, options, context),
+        CommandDispatch::Try => eval_try(conflict, options, context),
+        CommandDispatch::Throw => eval_throw(conflict, options, context),
+        CommandDispatch::Import => eval_import(conflict, options, context),
+        CommandDispatch::Resolve => eval_resolve(conflict, options, context),
         CommandDispatch::Transparent => eval_transparent(conflict, options, context),
     }
 }
@@ -153,35 +162,40 @@ fn eval_print(
     conflict: &ConflictNode,
     options: RunOptions,
     context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+) -> EvalResult {
     for lane in selected_lanes(conflict, options, context)? {
         let text = render_nodes_as_text(lane.nodes, options, context)?;
         context.write(&text);
     }
-    Ok(())
+    Ok(EvalOutcome::Unit)
 }
 
 fn eval_let(
     conflict: &ConflictNode,
     options: RunOptions,
     context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+) -> EvalResult {
     let Some(name) = binding::binding_name(&conflict.command.args) else {
         return Err(vec![runtime_error("let requires a binding name", conflict)]);
     };
+    let expected_type = expected_let_type(conflict);
 
     for lane in selected_lanes(conflict, options, context)? {
         let text = render_nodes_as_text(lane.nodes, options, context)?;
-        context.set_var(name, Value::parse_text(&text));
+        let value = Value::parse_text(&text);
+        if let Some(expected_type) = expected_type {
+            validate_type(name, expected_type, &value, conflict)?;
+        }
+        context.set_var(name, value);
     }
-    Ok(())
+    Ok(EvalOutcome::Unit)
 }
 
 fn eval_if(
     conflict: &ConflictNode,
     options: RunOptions,
     context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+) -> EvalResult {
     let Some(condition) = control_flow::condition_name(&conflict.command.args) else {
         return Err(vec![runtime_error("if requires a condition", conflict)]);
     };
@@ -198,23 +212,26 @@ fn eval_repeat(
     conflict: &ConflictNode,
     options: RunOptions,
     context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+) -> EvalResult {
     let count = control_flow::repeat_count(&conflict.command.args)
         .map_err(|message| vec![runtime_error(message, conflict)])?;
 
     for lane in selected_lanes(conflict, options, context)? {
         for _ in 0..count {
-            eval_nodes(lane.nodes, options, context)?;
+            let outcome = eval_nodes(lane.nodes, options, context)?;
+            if !outcome.is_unit() {
+                return Ok(outcome);
+            }
         }
     }
-    Ok(())
+    Ok(EvalOutcome::Unit)
 }
 
 fn eval_function(
     conflict: &ConflictNode,
     options: RunOptions,
     context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+) -> EvalResult {
     let Some((name, params)) = functions::function_signature(&conflict.command.args) else {
         return Err(vec![runtime_error("function requires a name", conflict)]);
     };
@@ -228,14 +245,14 @@ fn eval_function(
             },
         );
     }
-    Ok(())
+    Ok(EvalOutcome::Unit)
 }
 
 fn eval_call(
     conflict: &ConflictNode,
     options: RunOptions,
     context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+) -> EvalResult {
     let Some(name) = functions::call_name(&conflict.command.args) else {
         return Err(vec![runtime_error(
             "call requires a function name",
@@ -258,20 +275,165 @@ fn eval_call(
         }
         let result = eval_nodes(&function.body, options, context);
         context.pop_scope();
-        result?;
+        match result? {
+            EvalOutcome::Unit | EvalOutcome::Return(_) => {}
+        }
     }
-    Ok(())
+    Ok(EvalOutcome::Unit)
+}
+
+fn eval_return(
+    conflict: &ConflictNode,
+    options: RunOptions,
+    context: &mut RuntimeContext,
+) -> EvalResult {
+    let mut lanes = selected_lanes(conflict, options, context)?;
+    let lane = lanes.remove(0);
+    let text = render_nodes_as_text(lane.nodes, options, context)?;
+    Ok(EvalOutcome::Return(Value::parse_text(&text)))
+}
+
+fn eval_try(
+    conflict: &ConflictNode,
+    options: RunOptions,
+    context: &mut RuntimeContext,
+) -> EvalResult {
+    let attempt = eval_nodes(&conflict.ours, options, context);
+    let outcome = match attempt {
+        Ok(outcome) => Ok(outcome),
+        Err(_) => eval_nodes(&conflict.theirs, options, context),
+    };
+
+    if let Some(base) = &conflict.base {
+        let cleanup = eval_nodes(&base.items, options, context)?;
+        if !cleanup.is_unit() {
+            return Ok(cleanup);
+        }
+    }
+
+    outcome
+}
+
+fn eval_throw(
+    conflict: &ConflictNode,
+    options: RunOptions,
+    context: &mut RuntimeContext,
+) -> EvalResult {
+    let mut lanes = selected_lanes(conflict, options, context)?;
+    let lane = lanes.remove(0);
+    let text = render_nodes_as_text(lane.nodes, options, context)?;
+    Err(vec![Diagnostic::runtime_error(
+        "Merge conflict in execution",
+        Some(conflict.span),
+    )
+    .with_expected_actual("success", text.trim())])
+}
+
+fn eval_import(
+    conflict: &ConflictNode,
+    options: RunOptions,
+    context: &mut RuntimeContext,
+) -> EvalResult {
+    for lane in selected_lanes(conflict, options, context)? {
+        let text = render_nodes_as_text(lane.nodes, options, context)?;
+        let Some(raw_path) = import::first_import_path(&text) else {
+            return Err(vec![runtime_error("import requires a path", conflict)]);
+        };
+        eval_import_path(raw_path, options, context, conflict)?;
+    }
+    Ok(EvalOutcome::Unit)
+}
+
+fn eval_import_path(
+    raw_path: &str,
+    options: RunOptions,
+    context: &mut RuntimeContext,
+    conflict: &ConflictNode,
+) -> EvalResult {
+    let path = context.resolve_import_path(raw_path);
+    let import_key = path.canonicalize().unwrap_or_else(|_| path.clone());
+    if !context.enter_import(import_key.clone()) {
+        return Err(vec![runtime_error(
+            format!("import cycle detected: {}", import_key.display()),
+            conflict,
+        )]);
+    }
+
+    let result = read_and_eval_import(path, options, context, conflict);
+    context.leave_import();
+    result
+}
+
+fn read_and_eval_import(
+    path: PathBuf,
+    options: RunOptions,
+    context: &mut RuntimeContext,
+    conflict: &ConflictNode,
+) -> EvalResult {
+    let source_text = fs::read_to_string(&path).map_err(|error| {
+        vec![runtime_error(
+            format!("could not import {}: {error}", path.display()),
+            conflict,
+        )]
+    })?;
+    let previous_dir = context.replace_current_dir(
+        path.parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(|parent| parent.to_path_buf()),
+    );
+    let source = SourceFile::new(path.display().to_string(), source_text);
+    let program = parse_source(&source, options.parse_options);
+    let result = if program.has_errors() {
+        Err(program
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity == Severity::Error)
+            .cloned()
+            .collect::<Vec<_>>())
+    } else {
+        eval_nodes(&program.items, options, context)
+    };
+    context.replace_current_dir(previous_dir);
+    result
+}
+
+fn eval_resolve(
+    conflict: &ConflictNode,
+    options: RunOptions,
+    context: &mut RuntimeContext,
+) -> EvalResult {
+    let Some(strategy_name) = conflict.command.args.first() else {
+        return Err(vec![runtime_error("resolve requires a strategy", conflict)]);
+    };
+    let strategy = strategy_name
+        .parse::<Strategy>()
+        .map_err(|message| vec![runtime_error(message, conflict)])?;
+    let override_options = RunOptions {
+        strategy,
+        ..options
+    };
+
+    for lane in selected_lanes(conflict, options, context)? {
+        let outcome = eval_nodes(lane.nodes, override_options, context)?;
+        if !outcome.is_unit() {
+            return Ok(outcome);
+        }
+    }
+    Ok(EvalOutcome::Unit)
 }
 
 fn eval_transparent(
     conflict: &ConflictNode,
     options: RunOptions,
     context: &mut RuntimeContext,
-) -> Result<(), Vec<Diagnostic>> {
+) -> EvalResult {
     for lane in selected_lanes(conflict, options, context)? {
-        eval_nodes(lane.nodes, options, context)?;
+        let outcome = eval_nodes(lane.nodes, options, context)?;
+        if !outcome.is_unit() {
+            return Ok(outcome);
+        }
     }
-    Ok(())
+    Ok(EvalOutcome::Unit)
 }
 
 fn selected_lanes<'a>(
@@ -313,8 +475,9 @@ fn render_nodes_as_text(
             Node::Hint(node) => append_hint_line(&mut output, node, context),
             Node::Status(node) => append_status_line(&mut output, node, context),
             Node::Conflict(conflict) => {
-                let captured =
-                    context.capture_output(|context| eval_conflict(conflict, options, context))?;
+                let captured = context.capture_output(|context| {
+                    eval_conflict(conflict, options, context).map(|_| ())
+                })?;
                 output.push_str(&captured);
             }
             Node::Error(error) => return Err(vec![runtime_error_for_parser_node(error)]),
@@ -385,6 +548,40 @@ fn interpolate(text: &str, context: &RuntimeContext) -> String {
     output
 }
 
+fn expected_let_type(conflict: &ConflictNode) -> Option<&str> {
+    conflict
+        .base
+        .as_ref()
+        .and_then(|base| base.label.as_deref())
+        .and_then(|label| label.split_whitespace().next())
+        .filter(|name| matches!(*name, "int" | "float" | "string" | "bool"))
+}
+
+fn validate_type(
+    binding_name: &str,
+    expected_type: &str,
+    value: &Value,
+    conflict: &ConflictNode,
+) -> Result<(), Vec<Diagnostic>> {
+    let matches = match expected_type {
+        "int" => matches!(value, Value::Number(number) if number.fract() == 0.0),
+        "float" => matches!(value, Value::Number(_)),
+        "string" => matches!(value, Value::String(_)),
+        "bool" => matches!(value, Value::Bool(_)),
+        _ => true,
+    };
+
+    if matches {
+        Ok(())
+    } else {
+        Err(vec![Diagnostic::type_error(
+            format!("Merge conflict in {binding_name}"),
+            Some(conflict.span),
+        )
+        .with_expected_actual(expected_type, value.type_name())])
+    }
+}
+
 fn runtime_error(message: impl Into<String>, conflict: &ConflictNode) -> Diagnostic {
     Diagnostic::runtime_error(message, Some(conflict.span))
 }
@@ -402,9 +599,14 @@ fn runtime_error_for_parser_node(node: &ErrorNode) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn run(text: &str, strategy: Strategy) -> RunOutput {
         run_source("test.mh", text, strategy)
+    }
+
+    fn run_named(name: &str, text: &str, strategy: Strategy) -> RunOutput {
+        run_source(name, text, strategy)
     }
 
     fn run_seeded(text: &str, strategy: Strategy, seed: u64) -> RunOutput {
@@ -542,6 +744,33 @@ mod tests {
     }
 
     #[test]
+    fn let_checks_base_lane_type_metadata() {
+        let output = run(
+            "<<<<<<< let age\n30\n||||||| int default\n0\n=======\nthirty\n>>>>>>> let age\n<<<<<<< print\n${age}\n=======\n${age}\n>>>>>>> print\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "30\n");
+    }
+
+    #[test]
+    fn let_type_mismatch_renders_type_conflict() {
+        let output = run(
+            "<<<<<<< let age\nthirty\n||||||| int default\n0\n=======\n30\n>>>>>>> let age\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 1);
+        assert!(output
+            .stderr
+            .contains("CONFLICT (type): Merge conflict in age"));
+        assert!(output
+            .stderr
+            .contains("<<<<<<< expected\nint\n=======\nstring\n"));
+    }
+
+    #[test]
     fn missing_interpolation_value_becomes_empty_text() {
         let output = run(
             "<<<<<<< print\nHello, ${missing}\n=======\nGoodbye\n>>>>>>> print\n",
@@ -640,6 +869,119 @@ mod tests {
 
         assert_eq!(output.exit_code, 1);
         assert!(output.stderr.contains("unknown function `missing`"));
+    }
+
+    #[test]
+    fn return_stops_function_body() {
+        let output = run(
+            "<<<<<<< function stop\n<<<<<<< return\ndone\n=======\nno\n>>>>>>> return\n<<<<<<< print\nafter\n=======\nafter\n>>>>>>> print\n=======\nignored\n>>>>>>> function stop\n<<<<<<< call stop\n=======\n>>>>>>> call stop\n<<<<<<< print\noutside\n=======\nno\n>>>>>>> print\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "outside\n");
+    }
+
+    #[test]
+    fn throw_returns_runtime_conflict() {
+        let output = run(
+            "<<<<<<< throw\nsomething exploded\n=======\nquiet\n>>>>>>> throw\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 1);
+        assert!(output
+            .stderr
+            .contains("CONFLICT (runtime): Merge conflict in execution"));
+        assert!(output.stderr.contains("something exploded"));
+    }
+
+    #[test]
+    fn try_runs_attempt_when_it_succeeds() {
+        let output = run(
+            "<<<<<<< try\n<<<<<<< print\nattempt\n=======\nno\n>>>>>>> print\n=======\n<<<<<<< print\nrecovery\n=======\nno\n>>>>>>> print\n>>>>>>> try\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "attempt\n");
+    }
+
+    #[test]
+    fn try_runs_recovery_when_attempt_fails() {
+        let output = run(
+            "<<<<<<< try\n<<<<<<< throw\nboom\n=======\nno\n>>>>>>> throw\n=======\n<<<<<<< print\nrecovered\n=======\nno\n>>>>>>> print\n>>>>>>> try\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "recovered\n");
+    }
+
+    #[test]
+    fn try_runs_base_cleanup_after_attempt() {
+        let output = run(
+            "<<<<<<< try\n<<<<<<< print\nattempt\n=======\nno\n>>>>>>> print\n||||||| finally\n<<<<<<< print\ncleanup\n=======\nno\n>>>>>>> print\n=======\n<<<<<<< print\nrecovery\n=======\nno\n>>>>>>> print\n>>>>>>> try\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "attempt\ncleanup\n");
+    }
+
+    #[test]
+    fn resolve_overrides_nested_strategy() {
+        let output = run(
+            "<<<<<<< resolve theirs\n<<<<<<< print\nours\n=======\ntheirs\n>>>>>>> print\n=======\nignored\n>>>>>>> resolve\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "theirs\n");
+    }
+
+    #[test]
+    fn resolve_requires_strategy() {
+        let output = run(
+            "<<<<<<< resolve\nbody\n=======\nother\n>>>>>>> resolve\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 1);
+        assert!(output.stderr.contains("resolve requires a strategy"));
+    }
+
+    #[test]
+    fn import_evaluates_local_file_relative_to_source() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("mergehell_import_{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let imported = dir.join("lib.mh");
+        fs::write(
+            &imported,
+            "<<<<<<< print\nfrom import\n=======\nno\n>>>>>>> print\n",
+        )
+        .unwrap();
+
+        let main = "<<<<<<< import\nlib.mh\n=======\nmissing.mh\n>>>>>>> import\n";
+        let output = run_named(dir.join("main.mh").to_str().unwrap(), main, Strategy::Ours);
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "from import\n");
+    }
+
+    #[test]
+    fn import_missing_file_errors() {
+        let output = run(
+            "<<<<<<< import\nmissing.mh\n=======\nother.mh\n>>>>>>> import\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 1);
+        assert!(output.stderr.contains("could not import missing.mh"));
     }
 
     #[test]

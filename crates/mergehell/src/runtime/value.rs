@@ -34,6 +34,16 @@ impl Value {
         }
     }
 
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::String(_) => "string",
+            Value::Number(value) if value.fract() == 0.0 => "int",
+            Value::Number(_) => "float",
+            Value::Bool(_) => "bool",
+            Value::Null => "null",
+        }
+    }
+
     pub fn as_output_text(&self) -> String {
         match self {
             Value::String(value) => value.clone(),
@@ -78,5 +88,14 @@ mod tests {
         assert!(Value::Bool(true).is_truthy());
         assert!(!Value::Bool(false).is_truthy());
         assert!(!Value::Null.is_truthy());
+    }
+
+    #[test]
+    fn reports_type_names() {
+        assert_eq!(Value::String("hello".to_string()).type_name(), "string");
+        assert_eq!(Value::Number(42.0).type_name(), "int");
+        assert_eq!(Value::Number(1.5).type_name(), "float");
+        assert_eq!(Value::Bool(true).type_name(), "bool");
+        assert_eq!(Value::Null.type_name(), "null");
     }
 }
