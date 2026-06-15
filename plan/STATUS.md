@@ -2,7 +2,8 @@
 
 ## Current Step
 
-- Complete through Phase 6 Git strategy foundation; Phase 7/8 remain next.
+- In progress: complete more of Phase 6 by adding patch execution and
+  status-mode runtime metadata.
 
 ## Completed Steps
 
@@ -67,7 +68,20 @@
   18 CLI integration tests, binary tests, and doc tests all passed.
 - Staged the verified Phase 6 Git strategy and status changes.
 - Committed the verified Phase 6 Git strategy foundation.
+- Added patch-line helpers for forward patch execution and status-line helpers
+  for runtime metadata extraction.
+- Added runtime metadata storage and patch-mode run options; patch mode is
+  automatically enabled for diff-like input and status nodes can populate
+  runtime metadata.
+- Added unit tests for patch-mode text execution and status-mode metadata, plus
+  a CLI integration test for `mergehell run - --git` with patch stdin inside a
+  temporary Git repository.
+- Ran `cargo fmt --all` successfully for the Phase 6 completion slice.
+- Ran `cargo test --all` successfully for the Phase 6 completion slice: 147
+  unit tests, 19 CLI integration tests, binary tests, and doc tests all passed.
+- Staged the verified Phase 6 completion changes.
+- Committed the verified Phase 6 completion slice.
 
 ## Next Steps
 
-- Continue with Phase 7 extensions and Phase 8 hardening.
+- Continue with Phase 7 Level 3 extensions.

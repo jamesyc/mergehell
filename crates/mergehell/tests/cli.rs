@@ -1,5 +1,6 @@
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn fixture(name: &str) -> PathBuf {
@@ -318,4 +319,43 @@ fn merge_outputs_canonical_conflict() {
     assert!(stdout.contains("||||||| "));
     assert!(stdout.contains("base\n"));
     assert!(stdout.contains("theirs\n"));
+}
+
+#[test]
+fn run_dash_git_reads_patch_input_in_temp_repo() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("mergehell_cli_git_{unique}"));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let init = Command::new("git")
+        .arg("init")
+        .current_dir(&dir)
+        .output()
+        .expect("git init");
+    assert!(init.status.success());
+
+    let patch = "diff --git a/in b/out\n@@ -1 +1 @@\n<<<<<<< print\n+patched\n-removed\n=======\n+patched\n>>>>>>> print\n";
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args(["run", "-", "--git"])
+        .current_dir(&dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run mergehell");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(patch.as_bytes())
+        .expect("write stdin");
+    let output = child.wait_with_output().expect("wait mergehell");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(stdout.contains("patched\n"));
+    assert!(!stdout.contains("removed"));
 }

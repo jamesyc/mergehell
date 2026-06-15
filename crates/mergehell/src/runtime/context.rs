@@ -17,6 +17,7 @@ pub struct RuntimeContext {
     stdout: String,
     scopes: Vec<HashMap<String, Value>>,
     functions: HashMap<String, Function>,
+    metadata: HashMap<String, String>,
     rng: SeededRng,
     current_dir: Option<PathBuf>,
     import_stack: Vec<PathBuf>,
@@ -28,6 +29,7 @@ impl RuntimeContext {
             stdout: String::new(),
             scopes: vec![HashMap::new()],
             functions: HashMap::new(),
+            metadata: HashMap::new(),
             rng: SeededRng::new(seed),
             current_dir: None,
             import_stack: Vec::new(),
@@ -82,6 +84,14 @@ impl RuntimeContext {
 
     pub fn get_function(&self, name: &str) -> Option<&Function> {
         self.functions.get(name)
+    }
+
+    pub fn set_metadata(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.metadata.insert(key.into(), value.into());
+    }
+
+    pub fn get_metadata(&self, key: &str) -> Option<&str> {
+        self.metadata.get(key).map(String::as_str)
     }
 
     pub fn choose_index(&mut self, len: usize) -> Option<usize> {
@@ -205,6 +215,16 @@ mod tests {
         context.define_function("greet", function.clone());
 
         assert_eq!(context.get_function("greet"), Some(&function));
+    }
+
+    #[test]
+    fn stores_runtime_metadata() {
+        let mut context = RuntimeContext::new(0);
+
+        context.set_metadata("git.branch", "main");
+
+        assert_eq!(context.get_metadata("git.branch"), Some("main"));
+        assert_eq!(context.get_metadata("missing"), None);
     }
 
     #[test]

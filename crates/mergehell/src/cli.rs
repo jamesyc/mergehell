@@ -206,6 +206,7 @@ impl CliOptions {
             seed: self.seed,
             parse_options: self.parse_options,
             strict: self.strict,
+            patch_mode: false,
         }
     }
 }

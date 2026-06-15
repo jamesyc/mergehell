@@ -26,6 +26,7 @@ pub struct RunOptions {
     pub seed: u64,
     pub parse_options: ParseOptions,
     pub strict: bool,
+    pub patch_mode: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -42,6 +43,7 @@ impl Default for RunOptions {
             seed: 0,
             parse_options: ParseOptions::default(),
             strict: false,
+            patch_mode: false,
         }
     }
 }
@@ -67,6 +69,11 @@ pub fn run_source_with_options(
     options: RunOptions,
 ) -> RunOutput {
     let name = name.into();
+    let text = text.into();
+    let options = RunOptions {
+        patch_mode: options.patch_mode || crate::git::diff::looks_like_patch(&text),
+        ..options
+    };
     let source = SourceFile::new(name.clone(), text);
     let program = parse_source(&source, options.parse_options);
 
@@ -142,9 +149,11 @@ fn eval_node(node: &Node, options: RunOptions, context: &mut RuntimeContext) -> 
     match node {
         Node::Conflict(conflict) => eval_conflict(conflict, options, context),
         Node::Error(error) => Err(vec![runtime_error_for_parser_node(error)]),
-        Node::RawText(_) | Node::Diff(_) | Node::Hunk(_) | Node::Hint(_) | Node::Status(_) => {
+        Node::Status(status) => {
+            record_status_metadata(status, context);
             Ok(EvalOutcome::Unit)
         }
+        Node::RawText(_) | Node::Diff(_) | Node::Hunk(_) | Node::Hint(_) => Ok(EvalOutcome::Unit),
     }
 }
 
@@ -492,7 +501,7 @@ fn render_nodes_as_text(
     let mut output = String::new();
     for node in nodes {
         match node {
-            Node::RawText(node) => append_source_line(&mut output, node, context),
+            Node::RawText(node) => append_source_line(&mut output, node, options, context),
             Node::Diff(node) => append_diff_line(&mut output, node, context),
             Node::Hunk(node) => append_hunk_line(&mut output, node, context),
             Node::Hint(node) => append_hint_line(&mut output, node, context),
@@ -509,8 +518,19 @@ fn render_nodes_as_text(
     Ok(output)
 }
 
-fn append_source_line(output: &mut String, node: &RawTextNode, context: &RuntimeContext) {
-    print::append_line(output, &interpolate(&node.text, context));
+fn append_source_line(
+    output: &mut String,
+    node: &RawTextNode,
+    options: RunOptions,
+    context: &RuntimeContext,
+) {
+    if options.patch_mode {
+        if let Some(text) = crate::git::diff::forward_patch_text(&node.text) {
+            print::append_line(output, &interpolate(text, context));
+        }
+    } else {
+        print::append_line(output, &interpolate(&node.text, context));
+    }
 }
 
 fn append_diff_line(output: &mut String, node: &DiffNode, context: &RuntimeContext) {
@@ -527,6 +547,13 @@ fn append_hint_line(output: &mut String, node: &HintNode, context: &RuntimeConte
 
 fn append_status_line(output: &mut String, node: &StatusNode, context: &RuntimeContext) {
     print::append_line(output, &interpolate(&node.text, context));
+}
+
+fn record_status_metadata(node: &StatusNode, context: &mut RuntimeContext) {
+    if let Some((key, value)) = crate::git::status::runtime_metadata_for_status_line(&node.text) {
+        context.set_metadata(key, value.clone());
+        context.set_var(key, Value::String(value));
+    }
 }
 
 fn call_args(
@@ -653,6 +680,21 @@ mod tests {
                 seed,
                 parse_options: ParseOptions::default(),
                 strict: false,
+                patch_mode: false,
+            },
+        )
+    }
+
+    fn run_with_parse_options(text: &str, parse_options: ParseOptions) -> RunOutput {
+        run_source_with_options(
+            "test.mh",
+            text,
+            RunOptions {
+                strategy: Strategy::Ours,
+                seed: 0,
+                parse_options,
+                strict: false,
+                patch_mode: false,
             },
         )
     }
@@ -733,6 +775,53 @@ mod tests {
 
         assert_eq!(output.exit_code, 0);
         assert_eq!(output.stdout, "inside\n");
+    }
+
+    #[test]
+    fn patch_mode_executes_added_and_context_lines() {
+        let output = run(
+            "diff --git a/in b/out\n@@ -1,2 +1,2 @@\n<<<<<<< print\n+added\n-removed\n context\n=======\n+fallback\n>>>>>>> print\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "added\ncontext\n");
+    }
+
+    #[test]
+    fn plus_and_minus_lines_are_preserved_outside_patch_mode() {
+        let output = run(
+            "<<<<<<< print\n+added\n-removed\n=======\nother\n>>>>>>> print\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "+added\n-removed\n");
+    }
+
+    #[test]
+    fn status_mode_populates_runtime_metadata() {
+        let output = run_with_parse_options(
+            "On branch main\n<<<<<<< print\n${git.branch}\n=======\nno\n>>>>>>> print\n",
+            ParseOptions {
+                accept_regret: false,
+                git_status_mode: true,
+            },
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "main\n");
+    }
+
+    #[test]
+    fn status_lines_are_raw_without_status_mode() {
+        let output = run(
+            "On branch main\n<<<<<<< print\n${git.branch}\n=======\nno\n>>>>>>> print\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "\n");
     }
 
     #[test]

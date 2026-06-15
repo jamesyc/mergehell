@@ -117,6 +117,30 @@ pub fn strategy_from_current_repo() -> Result<Strategy, GitStrategyError> {
     strategy_from_git_state(&RealGitState)
 }
 
+pub fn runtime_metadata_for_status_line(text: &str) -> Option<(&'static str, String)> {
+    let trimmed = text.trim();
+    if let Some(branch) = trimmed.strip_prefix("On branch ") {
+        Some(("git.branch", branch.to_string()))
+    } else if trimmed == "You have unmerged paths." {
+        Some(("git.unmerged", "true".to_string()))
+    } else if let Some(path) = trimmed.strip_prefix("both modified:") {
+        Some(("git.status.both_modified", path.trim().to_string()))
+    } else if let Some(path) = trimmed.strip_prefix("deleted by us:") {
+        Some(("git.status.deleted_by_us", path.trim().to_string()))
+    } else if let Some(path) = trimmed.strip_prefix("deleted by them:") {
+        Some(("git.status.deleted_by_them", path.trim().to_string()))
+    } else if let Some(path) = trimmed.strip_prefix("added by us:") {
+        Some(("git.status.added_by_us", path.trim().to_string()))
+    } else if let Some(path) = trimmed.strip_prefix("added by them:") {
+        Some(("git.status.added_by_them", path.trim().to_string()))
+    } else if trimmed.starts_with("nothing to commit") || trimmed.starts_with("working tree clean")
+    {
+        Some(("git.clean", "true".to_string()))
+    } else {
+        None
+    }
+}
+
 fn detect_current_snapshot() -> Result<GitStateSnapshot, GitStrategyError> {
     let inside = git_output(["rev-parse", "--is-inside-work-tree"])?;
     if inside.trim() != "true" {
@@ -255,5 +279,22 @@ mod tests {
             strategy_from_git_state(&fake).unwrap_err().message,
             "fatal: no git"
         );
+    }
+
+    #[test]
+    fn parses_status_lines_into_runtime_metadata() {
+        assert_eq!(
+            runtime_metadata_for_status_line("On branch main"),
+            Some(("git.branch", "main".to_string()))
+        );
+        assert_eq!(
+            runtime_metadata_for_status_line("  both modified:   src/main.mh"),
+            Some(("git.status.both_modified", "src/main.mh".to_string()))
+        );
+        assert_eq!(
+            runtime_metadata_for_status_line("working tree clean"),
+            Some(("git.clean", "true".to_string()))
+        );
+        assert_eq!(runtime_metadata_for_status_line("Unmerged paths:"), None);
     }
 }
