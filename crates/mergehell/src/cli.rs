@@ -5,6 +5,7 @@ use std::process::ExitCode;
 use crate::diagnostic::render_diagnostics;
 use crate::resolve::strategy::Strategy;
 use crate::runtime::eval::RunOptions;
+use crate::source::decode_source_bytes;
 use crate::syntax::parser::ParseOptions;
 
 pub fn main() -> ExitCode {
@@ -121,16 +122,24 @@ fn ast_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
 }
 
 fn format_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
-    if args.len() != 1 {
+    if args.is_empty() {
         return CliOutput::usage_error("error: format requires FILE\n".to_string());
     }
 
     let file = &args[0];
+    let worse = args[1..].iter().any(|arg| arg == "--worse");
+    if args[1..].iter().any(|arg| arg != "--worse") {
+        return CliOutput::usage_error("error: unsupported format option\n".to_string());
+    }
     let source = match read_source(file, stdin) {
         Ok(source) => source,
         Err(error) => return CliOutput::failure(format!("error: {error}\n")),
     };
-    CliOutput::success(crate::format_source(file, source))
+    if worse {
+        CliOutput::success(crate::format_source_worse(file, source))
+    } else {
+        CliOutput::success(crate::format_source(file, source))
+    }
 }
 
 fn merge_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
@@ -171,13 +180,13 @@ fn regret_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
 }
 
 fn read_source(path: &str, stdin: &mut dyn Read) -> io::Result<String> {
+    let mut bytes = Vec::new();
     if path == "-" {
-        let mut source = String::new();
-        stdin.read_to_string(&mut source)?;
-        Ok(source)
+        stdin.read_to_end(&mut bytes)?;
     } else {
-        fs::read_to_string(path)
+        bytes = fs::read(path)?;
     }
+    Ok(decode_source_bytes(path, bytes))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -277,7 +286,7 @@ fn strict_check(
 }
 
 fn help_text() -> String {
-    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random|--git] [--seed N] [--accept-regret] [--strict]\n    mergehell check FILE [--accept-regret] [--strict]\n    mergehell ast FILE [--json] [--accept-regret]\n    mergehell format FILE\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
+    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random|--git] [--seed N] [--accept-regret] [--strict]\n    mergehell check FILE [--accept-regret] [--strict]\n    mergehell ast FILE [--json] [--accept-regret]\n    mergehell format FILE [--worse]\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
 }
 
 impl CliOutput {
@@ -448,6 +457,25 @@ mod tests {
     }
 
     #[test]
+    fn invalid_utf8_file_reads_as_binary_conflict_source() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let file = std::env::temp_dir().join(format!("mergehell_binary_{unique}.bin"));
+        fs::write(&file, [0xff, 0xfe]).unwrap();
+
+        let output = run_cli(
+            &args(&["ast", file.to_str().unwrap()]),
+            &mut Cursor::new(""),
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.contains("CONFLICT (binary)"));
+        assert!(output.stdout.contains("ConflictNode"));
+    }
+
+    #[test]
     fn strict_run_fails_on_parser_warning() {
         let source = "  <<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
         let output = run_cli(&args(&["run", "-", "--strict"]), &mut Cursor::new(source));
@@ -498,5 +526,16 @@ mod tests {
         assert!(output.stdout.contains("||||||| "));
         assert!(output.stdout.contains("base\n"));
         assert!(output.stdout.contains("theirs\n"));
+    }
+
+    #[test]
+    fn format_worse_adds_diff_metadata() {
+        let source = "<<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
+        let output = run_cli(&args(&["format", "-", "--worse"]), &mut Cursor::new(source));
+
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.starts_with("CONFLICT (content):"));
+        assert!(output.stdout.contains("diff --cc formatted.mh\n"));
+        assert!(output.stdout.contains("<<<<<<< print\n"));
     }
 }

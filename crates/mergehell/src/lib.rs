@@ -95,6 +95,10 @@ pub fn format_source(_name: impl Into<String>, text: impl Into<String>) -> Strin
     format::format_source(&text.into())
 }
 
+pub fn format_source_worse(_name: impl Into<String>, text: impl Into<String>) -> String {
+    format::format_worse(&text.into())
+}
+
 pub fn merge_sources(
     base_label: &str,
     base: &str,

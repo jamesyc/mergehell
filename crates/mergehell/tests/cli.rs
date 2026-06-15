@@ -288,6 +288,40 @@ fn format_preserves_source_for_initial_formatter() {
 }
 
 #[test]
+fn format_worse_adds_diff_metadata() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args(["format", fixture("hello.mh").to_str().unwrap(), "--worse"])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(stdout.starts_with("CONFLICT (content):"));
+    assert!(stdout.contains("diff --cc formatted.mh\n"));
+    assert!(stdout.contains("<<<<<<< print\n"));
+}
+
+#[test]
+fn ast_binary_file_renders_binary_conflict_source() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let file = std::env::temp_dir().join(format!("mergehell_cli_binary_{unique}.bin"));
+    std::fs::write(&file, [0xff, 0xfe]).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args(["ast", file.to_str().unwrap()])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(stdout.contains("CONFLICT (binary)"));
+    assert!(stdout.contains("ConflictNode"));
+}
+
+#[test]
 fn merge_outputs_canonical_conflict() {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -25,6 +25,19 @@ pub struct SourceLine<'a> {
     pub span: Span,
 }
 
+pub fn decode_source_bytes(name: &str, bytes: Vec<u8>) -> String {
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(_) => binary_conflict_source(name),
+    }
+}
+
+pub fn binary_conflict_source(name: &str) -> String {
+    format!(
+        "CONFLICT (binary): Merge conflict in {name}\n<<<<<<< binary\n<opaque bytes>\n=======\n<opaque bytes>\n>>>>>>> binary\n"
+    )
+}
+
 impl SourceFile {
     pub fn new(name: impl Into<String>, text: impl Into<String>) -> Self {
         let text = text.into();
@@ -185,5 +198,22 @@ mod tests {
                 end: 10
             }
         );
+    }
+
+    #[test]
+    fn decodes_utf8_source_bytes() {
+        assert_eq!(
+            decode_source_bytes("test.mh", b"hello\n".to_vec()),
+            "hello\n"
+        );
+    }
+
+    #[test]
+    fn invalid_utf8_becomes_binary_conflict_source() {
+        let source = decode_source_bytes("image.bin", vec![0xff, 0xfe]);
+
+        assert!(source.contains("CONFLICT (binary): Merge conflict in image.bin"));
+        assert!(source.contains("<<<<<<< binary"));
+        assert!(source.contains(">>>>>>> binary"));
     }
 }

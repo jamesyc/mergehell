@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::commands::{
-    binding, control_flow, dispatch_for, functions, import, print, CommandDispatch,
+    binding, control_flow, dispatch_for, functions, import, print, stdlib, CommandDispatch,
 };
 use crate::diagnostic::{render_diagnostics, Diagnostic, Severity};
 use crate::resolve::strategy::{
@@ -359,7 +359,12 @@ fn eval_import(
         let Some(raw_path) = import::first_import_path(&text) else {
             return Err(vec![runtime_error("import requires a path", conflict)]);
         };
-        eval_import_path(raw_path, options, context, conflict)?;
+        if let Some(module) = stdlib::find_module(raw_path) {
+            context.set_metadata(format!("stdlib.{}.loaded", module.name), "true");
+            context.set_var(format!("stdlib.{}.loaded", module.name), Value::Bool(true));
+        } else {
+            eval_import_path(raw_path, options, context, conflict)?;
+        }
     }
     Ok(EvalOutcome::Unit)
 }
@@ -1107,6 +1112,17 @@ mod tests {
 
         assert_eq!(output.exit_code, 1);
         assert!(output.stderr.contains("could not import missing.mh"));
+    }
+
+    #[test]
+    fn import_standard_module_succeeds_without_file_io() {
+        let output = run(
+            "<<<<<<< import\nrerere\n=======\nmissing.mh\n>>>>>>> import\n<<<<<<< print\n${stdlib.rerere.loaded}\n=======\nno\n>>>>>>> print\n",
+            Strategy::Ours,
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "true\n");
     }
 
     #[test]

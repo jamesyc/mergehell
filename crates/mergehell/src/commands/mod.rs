@@ -3,6 +3,8 @@ pub mod control_flow;
 pub mod functions;
 pub mod import;
 pub mod print;
+pub mod rerere;
+pub mod stdlib;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommandDispatch {

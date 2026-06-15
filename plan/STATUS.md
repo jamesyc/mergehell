@@ -2,8 +2,8 @@
 
 ## Current Step
 
-- In progress: complete more of Phase 6 by adding patch execution and
-  status-mode runtime metadata.
+- In progress: implement a Phase 7 extension slice covering standard modules,
+  rerere persistence, binary diagnostics, and `format --worse`.
 
 ## Completed Steps
 
@@ -81,7 +81,15 @@
   unit tests, 19 CLI integration tests, binary tests, and doc tests all passed.
 - Staged the verified Phase 6 completion changes.
 - Committed the verified Phase 6 completion slice.
+- Added Phase 7 standard-module registry, rerere cache persistence helper,
+  binary-source decoding to executable-looking conflict source, `format
+  --worse`, stdlib import handling, and unit/integration tests for those paths.
+- Ran `cargo fmt --all` successfully for the Phase 7 slice.
+- Ran `cargo test --all` successfully for the Phase 7 slice: 159 unit tests,
+  21 CLI integration tests, binary tests, and doc tests all passed.
+- Staged the verified Phase 7 extension changes.
+- Committed the verified Phase 7 extension slice.
 
 ## Next Steps
 
-- Continue with Phase 7 Level 3 extensions.
+- Continue with Phase 8 hardening and release readiness.
