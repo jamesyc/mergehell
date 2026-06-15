@@ -4,6 +4,8 @@ use std::process::ExitCode;
 
 use crate::diagnostic::render_diagnostics;
 use crate::resolve::strategy::Strategy;
+use crate::runtime::eval::RunOptions;
+use crate::syntax::parser::ParseOptions;
 
 pub fn main() -> ExitCode {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
@@ -44,19 +46,16 @@ fn run_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
     }
 
     let file = &args[0];
-    let mut strategy = Strategy::Ours;
-    for arg in &args[1..] {
-        match arg.parse::<Strategy>() {
-            Ok(parsed) => strategy = parsed,
-            Err(message) => return CliOutput::usage_error(format!("error: {message}\n")),
-        }
-    }
+    let options = match parse_cli_options(&args[1..]) {
+        Ok(options) => options,
+        Err(message) => return CliOutput::usage_error(format!("error: {message}\n")),
+    };
 
     let source = match read_source(file, stdin) {
         Ok(source) => source,
         Err(error) => return CliOutput::failure(format!("error: {error}\n")),
     };
-    let output = crate::run(file, source, strategy);
+    let output = crate::run_with_options(file, source, options.into_run_options());
     CliOutput {
         stdout: output.stdout,
         stderr: output.stderr,
@@ -65,17 +64,21 @@ fn run_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
 }
 
 fn check_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
-    if args.len() != 1 {
+    if args.is_empty() {
         return CliOutput::usage_error("error: check requires FILE\n".to_string());
     }
 
     let file = &args[0];
+    let options = match parse_cli_options(&args[1..]) {
+        Ok(options) => options,
+        Err(message) => return CliOutput::usage_error(format!("error: {message}\n")),
+    };
     let source = match read_source(file, stdin) {
         Ok(source) => source,
         Err(error) => return CliOutput::failure(format!("error: {error}\n")),
     };
 
-    match crate::check(file, source) {
+    match crate::check_with_options(file, source, options.parse_options) {
         Ok(()) => CliOutput::success(String::new()),
         Err(diagnostics) => CliOutput {
             stdout: String::new(),
@@ -86,16 +89,23 @@ fn check_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
 }
 
 fn ast_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
-    if args.len() != 1 {
+    if args.is_empty() {
         return CliOutput::usage_error("error: ast requires FILE\n".to_string());
     }
 
     let file = &args[0];
+    let options = match parse_cli_options(&args[1..]) {
+        Ok(options) => options,
+        Err(message) => return CliOutput::usage_error(format!("error: {message}\n")),
+    };
     let source = match read_source(file, stdin) {
         Ok(source) => source,
         Err(error) => return CliOutput::failure(format!("error: {error}\n")),
     };
-    CliOutput::success(format!("{}\n", crate::ast(file, source)))
+    CliOutput::success(format!(
+        "{}\n",
+        crate::ast_with_options(file, source, options.parse_options)
+    ))
 }
 
 fn format_command(args: &[String], stdin: &mut dyn Read) -> CliOutput {
@@ -121,8 +131,68 @@ fn read_source(path: &str, stdin: &mut dyn Read) -> io::Result<String> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CliOptions {
+    strategy: Strategy,
+    seed: u64,
+    parse_options: ParseOptions,
+}
+
+impl Default for CliOptions {
+    fn default() -> Self {
+        Self {
+            strategy: Strategy::Ours,
+            seed: 0,
+            parse_options: ParseOptions::default(),
+        }
+    }
+}
+
+impl CliOptions {
+    fn into_run_options(self) -> RunOptions {
+        RunOptions {
+            strategy: self.strategy,
+            seed: self.seed,
+            parse_options: self.parse_options,
+        }
+    }
+}
+
+fn parse_cli_options(args: &[String]) -> Result<CliOptions, String> {
+    let mut options = CliOptions::default();
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--seed" => {
+                let Some(raw_seed) = args.get(index + 1) else {
+                    return Err("--seed requires a value".to_string());
+                };
+                options.seed = raw_seed
+                    .parse::<u64>()
+                    .map_err(|_| format!("--seed must be an unsigned integer: {raw_seed}"))?;
+                index += 2;
+            }
+            "--accept-regret" => {
+                options.parse_options.accept_regret = true;
+                index += 1;
+            }
+            "--git-status-mode" => {
+                options.parse_options.git_status_mode = true;
+                index += 1;
+            }
+            flag => {
+                options.strategy = flag.parse::<Strategy>()?;
+                index += 1;
+            }
+        }
+    }
+
+    Ok(options)
+}
+
 fn help_text() -> String {
-    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs]\n    mergehell check FILE\n    mergehell ast FILE\n    mergehell format FILE\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
+    "MergeHell reference interpreter\n\nUSAGE:\n    mergehell <COMMAND> [ARGS]\n\nCOMMANDS:\n    mergehell run FILE [--ours|--theirs|--base|--union|--random] [--seed N] [--accept-regret]\n    mergehell check FILE [--accept-regret]\n    mergehell ast FILE [--accept-regret]\n    mergehell format FILE\n    mergehell merge BASE OURS THEIRS\n    mergehell regret FILE\n\n".to_string()
 }
 
 impl CliOutput {
@@ -197,10 +267,61 @@ mod tests {
     #[test]
     fn run_rejects_unsupported_strategy() {
         let source = "<<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
-        let output = run_cli(&args(&["run", "-", "--union"]), &mut Cursor::new(source));
+        let output = run_cli(&args(&["run", "-", "--manual"]), &mut Cursor::new(source));
 
         assert_eq!(output.exit_code, 2);
-        assert_eq!(output.stderr, "error: unsupported strategy: --union\n");
+        assert_eq!(output.stderr, "error: unsupported strategy: --manual\n");
+    }
+
+    #[test]
+    fn run_accepts_union_strategy() {
+        let source = "<<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
+        let output = run_cli(&args(&["run", "-", "--union"]), &mut Cursor::new(source));
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "Hello\nGoodbye\n");
+    }
+
+    #[test]
+    fn run_accepts_seeded_random_strategy() {
+        let source = "<<<<<<< print\nHello\n=======\nGoodbye\n>>>>>>> print\n";
+        let left = run_cli(
+            &args(&["run", "-", "--random", "--seed", "7"]),
+            &mut Cursor::new(source),
+        );
+        let right = run_cli(
+            &args(&["run", "-", "--random", "--seed", "7"]),
+            &mut Cursor::new(source),
+        );
+
+        assert_eq!(left.exit_code, 0);
+        assert_eq!(left.stdout, right.stdout);
+    }
+
+    #[test]
+    fn seed_requires_numeric_value() {
+        let output = run_cli(
+            &args(&["run", "-", "--random", "--seed", "bad"]),
+            &mut Cursor::new(""),
+        );
+
+        assert_eq!(output.exit_code, 2);
+        assert_eq!(
+            output.stderr,
+            "error: --seed must be an unsigned integer: bad\n"
+        );
+    }
+
+    #[test]
+    fn accept_regret_allows_near_conflict() {
+        let source = "<<<<<< print\nHello\n======\nGoodbye\n>>>>>> print\n";
+        let output = run_cli(
+            &args(&["run", "-", "--accept-regret"]),
+            &mut Cursor::new(source),
+        );
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "Hello\n");
     }
 
     #[test]

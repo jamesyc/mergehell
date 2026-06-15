@@ -1,0 +1,15 @@
+<<<<<<< function greet person
+<<<<<<< print
+Hello, ${person}
+=======
+Goodbye, ${person}
+>>>>>>> print
+=======
+function rejected
+>>>>>>> function greet
+
+<<<<<<< call greet
+James
+=======
+Nobody
+>>>>>>> call greet

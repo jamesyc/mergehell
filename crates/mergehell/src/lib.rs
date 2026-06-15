@@ -10,23 +10,47 @@ pub mod syntax;
 
 use diagnostic::{Diagnostic, Severity};
 use resolve::strategy::Strategy;
-use runtime::eval::RunOutput;
+use runtime::eval::{RunOptions, RunOutput};
 use source::SourceFile;
 use syntax::parser::{parse_source, ParseOptions};
 
 pub use syntax::ast::Program;
 
 pub fn parse(name: impl Into<String>, text: impl Into<String>) -> Program {
+    parse_with_options(name, text, ParseOptions::default())
+}
+
+pub fn parse_with_options(
+    name: impl Into<String>,
+    text: impl Into<String>,
+    options: ParseOptions,
+) -> Program {
     let source = SourceFile::new(name, text);
-    parse_source(&source, ParseOptions::default())
+    parse_source(&source, options)
 }
 
 pub fn run(name: impl Into<String>, text: impl Into<String>, strategy: Strategy) -> RunOutput {
     runtime::eval::run_source(name, text, strategy)
 }
 
+pub fn run_with_options(
+    name: impl Into<String>,
+    text: impl Into<String>,
+    options: RunOptions,
+) -> RunOutput {
+    runtime::eval::run_source_with_options(name, text, options)
+}
+
 pub fn check(name: impl Into<String>, text: impl Into<String>) -> Result<(), Vec<Diagnostic>> {
-    let program = parse(name, text);
+    check_with_options(name, text, ParseOptions::default())
+}
+
+pub fn check_with_options(
+    name: impl Into<String>,
+    text: impl Into<String>,
+    options: ParseOptions,
+) -> Result<(), Vec<Diagnostic>> {
+    let program = parse_with_options(name, text, options);
     let errors: Vec<Diagnostic> = program
         .diagnostics
         .iter()
@@ -48,7 +72,15 @@ pub fn check(name: impl Into<String>, text: impl Into<String>) -> Result<(), Vec
 }
 
 pub fn ast(name: impl Into<String>, text: impl Into<String>) -> String {
-    format!("{:#?}", parse(name, text))
+    ast_with_options(name, text, ParseOptions::default())
+}
+
+pub fn ast_with_options(
+    name: impl Into<String>,
+    text: impl Into<String>,
+    options: ParseOptions,
+) -> String {
+    format!("{:#?}", parse_with_options(name, text, options))
 }
 
 pub fn format_source(_name: impl Into<String>, text: impl Into<String>) -> String {
@@ -87,5 +119,19 @@ mod tests {
         let source = "<<<<<<< print\nhello\n=======\nbye\n>>>>>>> print\n";
 
         assert_eq!(format_source("test.mh", source), source);
+    }
+
+    #[test]
+    fn parse_with_options_accepts_near_conflict() {
+        let program = parse_with_options(
+            "test.mh",
+            "<<<<<< print\nhello\n======\nbye\n>>>>>> print\n",
+            ParseOptions {
+                accept_regret: true,
+                git_status_mode: false,
+            },
+        );
+
+        assert!(program.has_conflicts());
     }
 }

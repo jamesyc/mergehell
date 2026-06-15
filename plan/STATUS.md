@@ -2,7 +2,8 @@
 
 ## Current Step
 
-- Complete: Phase 0/Level 0 MVP is implemented, verified, and committed.
+- In progress: implement Phase 2 parser option exposure and Phase 3/Level 1
+  runtime features.
 
 ## Completed Steps
 
@@ -33,7 +34,18 @@
 - Staged the verified implementation files, fixtures, lockfile, and status
   update for commit.
 - Committed the verified Level 0 MVP implementation.
+- Extended command dispatch and runtime state for Level 1 commands, variables,
+  function definitions, scoped calls, interpolation, deterministic lane choice,
+  and option-aware public APIs/CLI parsing.
+- Added Level 1 fixtures and CLI integration tests for base, union, functions,
+  and seeded random reproducibility.
+- Ran `cargo fmt --all` successfully for the Level 1 slice.
+- Ran `cargo test --all` successfully for the Level 1 slice: 105 unit tests,
+  10 CLI integration tests, binary tests, and doc tests all passed.
+- Staged the verified Level 1 runtime, CLI, fixture, and status changes.
+- Committed the verified Level 1 runtime slice.
 
 ## Next Steps
 
-- Continue with Phase 2 parser robustness and Level 1 runtime features.
+- Continue with Phase 4 control flow, errors, imports, explicit resolve, and
+  type diagnostics.

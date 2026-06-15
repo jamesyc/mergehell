@@ -56,6 +56,89 @@ fn run_hello_theirs_matches_readme() {
 }
 
 #[test]
+fn run_level1_variables_with_base_strategy() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            fixture("level1_variables.mh").to_str().unwrap(),
+            "--base",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "Hello, User\n"
+    );
+    assert_eq!(output.stderr, Vec::<u8>::new());
+}
+
+#[test]
+fn run_level1_variables_with_union_strategy() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            fixture("level1_variables.mh").to_str().unwrap(),
+            "--union",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "Hello, Remote\nHello, User\nGoodbye, Remote\n"
+    );
+}
+
+#[test]
+fn run_level1_function_call() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            fixture("level1_function.mh").to_str().unwrap(),
+            "--ours",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout utf8"),
+        "Hello, James\n"
+    );
+}
+
+#[test]
+fn run_seeded_random_is_reproducible() {
+    let left = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            fixture("level1_variables.mh").to_str().unwrap(),
+            "--random",
+            "--seed",
+            "123",
+        ])
+        .output()
+        .expect("run mergehell");
+    let right = Command::new(env!("CARGO_BIN_EXE_mergehell"))
+        .args([
+            "run",
+            fixture("level1_variables.mh").to_str().unwrap(),
+            "--random",
+            "--seed",
+            "123",
+        ])
+        .output()
+        .expect("run mergehell");
+
+    assert!(left.status.success());
+    assert!(right.status.success());
+    assert_eq!(left.stdout, right.stdout);
+}
+
+#[test]
 fn check_succeeds_for_conflict_fixture() {
     let output = Command::new(env!("CARGO_BIN_EXE_mergehell"))
         .args(["check", fixture("hello.mh").to_str().unwrap()])
